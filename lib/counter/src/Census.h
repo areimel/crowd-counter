@@ -28,7 +28,7 @@ inline bool onAllowlist(const Allowlist& a, uint64_t id) {
 // Fixed-address, non-phone BLE present for backgroundAfterS or longer: venue kit.
 inline bool isBackground(const DeviceEntry& e, const CensusParams& p, uint32_t nowS) {
   return e.signal == Signal::BLE && e.addrKind == AddrKind::FIXED &&
-         classOf(e.markers) != DeviceClass::PHONE && (nowS - e.firstSeenS) >= p.backgroundAfterS;
+         classOf(e.markers) != DeviceClass::PHONE && (nowS > e.firstSeenS ? nowS - e.firstSeenS : 0) >= p.backgroundAfterS;
 }
 
 inline float weightFor(const DeviceEntry& e, const CensusParams& p) {
@@ -72,6 +72,8 @@ inline void captureSetup(const DeviceTable& t, const CensusParams& p, uint32_t n
   t.forEach([&](const DeviceEntry& e) {
     if (!census::inWindow(e, p, nowS) || !census::atGate(e, p)) return;
     if (e.addrKind == AddrKind::FIXED) {
+      // Beyond ALLOWLIST_MAX the extras are not stored and not in fixedCount, so
+      // they keep being counted as people at census time.
       if (outAllow.count < ALLOWLIST_MAX) outAllow.ids[outAllow.count++] = e.id;
     } else if (e.signal == Signal::BLE) {
       outBase.ble += census::weightFor(e, p);

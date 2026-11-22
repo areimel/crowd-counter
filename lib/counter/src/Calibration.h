@@ -48,15 +48,16 @@ inline Ratios fitRatios(const CalProfile& p, const Ratios& defaults) {
     bleXY += static_cast<double>(c.ble) * t;
     bleYY += t * t;
     ++bleN;
-    if (c.wifi > 0.0f) {
-      wifiXY += static_cast<double>(c.wifi) * t;
-      wifiYY += t * t;
-      ++wifiN;
-    }
+    // A count taken while Wi-Fi heard nothing is still evidence (of a low
+    // ratio), so every pair enters the Wi-Fi fit.
+    wifiXY += static_cast<double>(c.wifi) * t;
+    wifiYY += t * t;
+    if (c.wifi > 0.0f) ++wifiN;
   }
   Ratios out = defaults;
   if (bleN >= 1) out.ble = detail::clampRatio(bleXY, bleYY, defaults.ble);
-  if (wifiN >= WIFI_FIT_MIN_PAIRS) {
+  // Wi-Fi is trusted once there are enough counts and it heard something.
+  if (bleN >= WIFI_FIT_MIN_PAIRS && wifiN >= 1) {
     const float w = detail::clampRatio(wifiXY, wifiYY, defaults.wifi);
     out.wifi = w;
     out.wifiFitted = true;

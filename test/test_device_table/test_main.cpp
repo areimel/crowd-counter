@@ -73,14 +73,16 @@ void test_rssi_rule() {
   TEST_ASSERT_EQUAL_INT8(-70, lookup(t, 1)->rssi);
   t.observe(makeObs(1, -90), 2);  // (3*-70 + -90)/4 = -75
   TEST_ASSERT_EQUAL_INT8(-75, lookup(t, 1)->rssi);
-  t.observe(makeObs(1, -80), 3);  // (-225 + -80)/4 = -76.25 -> -76 (truncates toward zero)
-  TEST_ASSERT_EQUAL_INT8(-76, lookup(t, 1)->rssi);
+  t.observe(makeObs(1, -80), 3);  // (-225 + -80)/4 = -76.25 -> -77 (floors)
+  TEST_ASSERT_EQUAL_INT8(-77, lookup(t, 1)->rssi);
+  for (int i = 0; i < 20; ++i) t.observe(makeObs(1, -80), 4);  // decay reaches the real level
+  TEST_ASSERT_EQUAL_INT8(-80, lookup(t, 1)->rssi);
   t.observe(makeObs(2, -100), 0);
   t.observe(makeObs(2, -99), 0);  // new stronger than smoothed
   TEST_ASSERT_EQUAL_INT8(-99, lookup(t, 2)->rssi);
   t.observe(makeObs(3, 10), 0);
-  t.observe(makeObs(3, -127), 0);  // (30 - 127)/4 = -24
-  TEST_ASSERT_EQUAL_INT8(-24, lookup(t, 3)->rssi);
+  t.observe(makeObs(3, -127), 0);  // (30 - 127)/4 = -24.25 -> -25
+  TEST_ASSERT_EQUAL_INT8(-25, lookup(t, 3)->rssi);
 }
 
 void test_id_zero_ignored() {
@@ -101,6 +103,37 @@ void test_clear() {
   TEST_ASSERT_EQUAL_INT(0, n);
   t.observe(makeObs(3, -50), 5);
   TEST_ASSERT_EQUAL_UINT32(1, t.size());
+}
+
+void test_degenerate_tables_are_safe() {
+  DeviceTable n(nullptr, 16, 4);
+  n.observe(makeObs(1, -50), 1);
+  TEST_ASSERT_EQUAL_UINT32(0, n.size());
+  TEST_ASSERT_EQUAL_UINT32(0, n.expire(100, 1));
+  n.clear();
+  int visits = 0;
+  n.forEach([&](const DeviceEntry&) { ++visits; });
+  TEST_ASSERT_EQUAL_INT(0, visits);
+  DeviceTable z(g_slots, 0, 4);
+  z.observe(makeObs(1, -50), 1);
+  TEST_ASSERT_EQUAL_UINT32(0, z.size());
+  TEST_ASSERT_EQUAL_UINT32(0, z.expire(100, 1));
+  DeviceTable one(g_slots, 1, 4);  // must not spin forever
+  for (uint64_t i = 1; i <= 3; ++i) one.observe(makeObs(i, -50), 1);
+  TEST_ASSERT_EQUAL_UINT32(0, one.size());
+  TEST_ASSERT_EQUAL_UINT32(0, one.expire(100, 1));
+  one.forEach([&](const DeviceEntry&) { ++visits; });
+  TEST_ASSERT_EQUAL_INT(0, visits);
+}
+
+void test_clear_zeroes_whole_slots() {
+  DeviceTable t(g_slots, 16, 8);
+  for (uint64_t i = 1; i <= 6; ++i) t.observe(makeObs(i, -50), 7);
+  t.clear();
+  for (const DeviceEntry& e : g_slots) {
+    const uint8_t* b = reinterpret_cast<const uint8_t*>(&e);
+    for (size_t k = 0; k < sizeof e; ++k) TEST_ASSERT_EQUAL_UINT8(0, b[k]);
+  }
 }
 
 void test_constructor_clamps() {
@@ -275,7 +308,8 @@ void test_randomized_differential() {
       const uint8_t mk = static_cast<uint8_t>(1u << (rng.next() % 6));
       auto it = ref.find(id);
       if (it != ref.end()) {
-        const int avg = (3 * it->second.rssi + rssi) / 4;
+        const int sum = 3 * it->second.rssi + rssi;
+        const int avg = (sum - ((sum % 4 + 4) % 4)) / 4;  // floor, written independently of the code under test
         it->second.rssi = static_cast<int8_t>(rssi > avg ? rssi : avg);
         it->second.last = now;
         it->second.markers |= mk;
@@ -327,6 +361,8 @@ int main() {
   RUN_TEST(test_rssi_rule);
   RUN_TEST(test_id_zero_ignored);
   RUN_TEST(test_clear);
+  RUN_TEST(test_degenerate_tables_are_safe);
+  RUN_TEST(test_clear_zeroes_whole_slots);
   RUN_TEST(test_constructor_clamps);
   RUN_TEST(test_expire_boundary);
   RUN_TEST(test_deletion_keeps_colliding_entries_findable);

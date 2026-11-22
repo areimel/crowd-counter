@@ -3,11 +3,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "SecureZero.h"
+
 namespace cc {
 
 class Sha256 {
  public:
   Sha256() { reset(); }
+  ~Sha256() { wipe(); }
+  Sha256(const Sha256&) = delete;
+  Sha256& operator=(const Sha256&) = delete;
+
+  // Zero every byte of internal state, including the block buffer that held the
+  // message. The object must be reset() before it is used again. Uses
+  // secureZero so the stores survive optimisation even on a dying object.
+  void wipe() { secureZero(this, sizeof *this); }
 
   void reset() {
     static const uint32_t init[8] = {0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
@@ -48,8 +58,8 @@ class Sha256 {
       out[i * 4 + 2] = static_cast<uint8_t>(h_[i] >> 8);
       out[i * 4 + 3] = static_cast<uint8_t>(h_[i]);
     }
+    secureZero(buf_, sizeof buf_);
     reset();
-    for (size_t i = 0; i < 64; i++) buf_[i] = 0;
   }
 
  private:
@@ -89,6 +99,8 @@ class Sha256 {
     }
     h_[0] += a; h_[1] += b; h_[2] += c; h_[3] += d;
     h_[4] += e; h_[5] += f; h_[6] += g; h_[7] += h;
+    // The schedule holds the message words (salt and address); do not leave it on the stack.
+    secureZero(w, sizeof w);
   }
 
   uint32_t h_[8];
@@ -101,6 +113,7 @@ inline void sha256(const uint8_t* data, size_t len, uint8_t out[32]) {
   Sha256 s;
   s.update(data, len);
   s.finish(out);
+  s.wipe();
 }
 
 }  // namespace cc

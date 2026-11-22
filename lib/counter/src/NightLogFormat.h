@@ -113,6 +113,12 @@ struct FieldReader {
     return delimiter(end);
   }
 
+  // Non-negative decimal (signal levels are never written negative).
+  bool nonNegReal(float& out) {
+    if (*p == '-') return false;
+    return real(out);
+  }
+
   bool real(float& out) {
     if (!((*p >= '0' && *p <= '9') || *p == '-' || *p == '.')) return false;
     char* end = nullptr;
@@ -182,6 +188,13 @@ inline size_t formatResumeEvent(char* buf, size_t cap, uint16_t minute) {
   return w.finish();
 }
 
+inline size_t formatAlertEvent(char* buf, size_t cap, uint16_t minute, uint16_t threshold) {
+  nightlog_detail::LineWriter w(buf, cap);
+  w.add("# event minute=%u alert threshold=%u", static_cast<unsigned>(minute),
+        static_cast<unsigned>(threshold));
+  return w.finish();
+}
+
 inline size_t formatManualCountEvent(char* buf, size_t cap, uint16_t minute, uint16_t truth,
                                      float bleSignal, float wifiSignal) {
   nightlog_detail::LineWriter w(buf, cap);
@@ -203,7 +216,7 @@ inline bool parseRow(const char* line, MinuteRecord& out) {
   bool ok = f.u16(r.minute) && f.uns(0xFFFFFFFFu, r.epoch);
   for (uint8_t i = 0; ok && i < CLASS_COUNT; ++i) ok = f.u16(r.ble[i]);
   ok = ok && f.u16(r.wifi) && f.u16(r.wifiRotating) && f.u16(r.background) &&
-       f.u16(r.allowlisted) && f.real(r.bleSignal) && f.real(r.wifiSignal) && f.u16(r.estimate) &&
+       f.u16(r.allowlisted) && f.nonNegReal(r.bleSignal) && f.nonNegReal(r.wifiSignal) && f.u16(r.estimate) &&
        f.u16(r.smoothed) && f.u16(r.peak) && f.u16(r.threshold) && f.u16(r.batteryMv) &&
        f.uns(0xFFu, v);
   if (!ok) return false;
@@ -216,6 +229,8 @@ inline bool parseRow(const char* line, MinuteRecord& out) {
 struct NightSummaryBuilder {
   void add(const MinuteRecord& r) {
     if (s_.minutes < 0xFFFFu) ++s_.minutes;
+    if (r.minute > s_.lastMinute) s_.lastMinute = r.minute;
+    if (r.flags & rowflag::ALERT) s_.alertFired = true;
     if (r.peak > s_.peak) s_.peak = r.peak;
     if (r.threshold > 0 && r.smoothed >= r.threshold && !(r.flags & rowflag::WARMUP)) {
       if (s_.minutesAbove < 0xFFFFu) ++s_.minutesAbove;
@@ -229,7 +244,7 @@ struct NightSummaryBuilder {
   NightSummary result() const { return s_; }
 
  private:
-  NightSummary s_ = {0, 0, 0, 0, 0, 0};
+  NightSummary s_ = {};
 };
 
 }  // namespace cc

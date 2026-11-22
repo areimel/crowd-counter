@@ -48,7 +48,7 @@ struct DeviceEntry {
   uint64_t id;
   uint32_t firstSeenS;
   uint32_t lastSeenS;
-  int8_t rssi;  // fast-attack, slow-decay: max(new, (3*old + new) / 4)
+  int8_t rssi;  // fast-attack, slow-decay: max(new, floor((3*old + new) / 4))
   Signal signal;
   AddrKind addrKind;
   uint8_t markers;  // OR of every marker seen for this id
@@ -160,6 +160,7 @@ struct CalProfile {
 
 namespace rowflag {
 constexpr uint8_t WARMUP = 1 << 0;
+constexpr uint8_t ALERT = 1 << 1;  // the threshold alert has fired this night (set on every row after)
 }
 
 // One row per minute. Aggregates only.
@@ -194,7 +195,9 @@ struct NightMethod {
 };
 
 struct NightSummary {
-  uint16_t minutes;  // rows in the night
+  uint16_t minutes;     // rows in the night
+  uint16_t lastMinute;  // highest minute number seen (rows can be missing)
+  bool alertFired;      // any row carries rowflag::ALERT
   uint16_t peak;
   uint16_t minutesAbove;
   uint16_t threshold;  // from the last row
@@ -274,6 +277,8 @@ struct UiLimits {
   uint16_t manualStep;
   uint32_t dimAfterMs;
   uint32_t promptTimeoutMs;
+  uint32_t settingsTimeoutMs;  // idle in settings this long returns to the count
+  uint32_t confirmTimeoutMs;   // setup capture must be confirmed by a second hold within this
 };
 
 // Everything the renderer needs. Redraw only when this changes.
@@ -288,6 +293,8 @@ struct UiModel {
   ThresholdState state;
   bool warmingUp;
   bool capturing;   // setup capture waiting for a full window
+  bool confirmCapture;  // first KEY2 hold seen: hold again to capture
+  bool logError;        // the night log could not be written
   bool setupStale;  // resumed after power loss: allowlist gone, re-run setup
   bool flash;       // alert flash phase
   uint8_t pulse;    // scanning animation phase, 0..3
@@ -308,6 +315,7 @@ struct UiModel {
   // settings / prompt
   uint16_t manualCount;
   uint8_t promptSeconds;
+  uint8_t promptTotalSeconds;
 };
 
 }  // namespace cc

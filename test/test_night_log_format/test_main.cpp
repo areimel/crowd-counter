@@ -99,6 +99,9 @@ void test_resume_and_manual() {
   char b[200];
   formatResumeEvent(b, sizeof b, 33);
   TEST_ASSERT_EQUAL_STRING("# event minute=33 resume\n", b);
+  formatAlertEvent(b, sizeof b, 77, 120);
+  TEST_ASSERT_EQUAL_STRING("# event minute=77 alert threshold=120\n", b);
+  TEST_ASSERT_EQUAL(0, formatAlertEvent(b, 10, 77, 120));
   formatManualCountEvent(b, sizeof b, 12, 85, 20.5f, 3.0f);
   TEST_ASSERT_EQUAL_STRING(
       "# event minute=12 manual_count truth=85 ble_signal=20.50 wifi_signal=3.00\n", b);
@@ -186,6 +189,8 @@ void test_parse_rejects() {
       "5,4294967296,1,2,3,4,5,6,7,40,30,5,2,12.50,9.25,60,58,61,100,3987,1\n",       // u32
       "5,1700000300,1,2,3,4,5,6,7,40,30,5,2,12.50,9.25,60,58,61,100,3987,256\n",     // u8
       "5,1700000300,1,2,3,4,5,6,7,40,30,5,2,abc,9.25,60,58,61,100,3987,1\n",         // float
+      "5,1700000300,1,2,3,4,5,6,7,40,30,5,2,-5,9.25,60,58,61,100,3987,1\n",         // negative ble_signal
+      "5,1700000300,1,2,3,4,5,6,7,40,30,5,2,12.50,-0.5,60,58,61,100,3987,1\n",      // negative wifi_signal
       "5,1700000300,1,2,3,4,5,6,7,40,30,5,2,nan,9.25,60,58,61,100,3987,1\n",         // nan
   };
   for (size_t i = 0; i < sizeof bad / sizeof bad[0]; ++i) {
@@ -259,6 +264,28 @@ void test_summary_sequence() {
   TEST_ASSERT_EQUAL_UINT32(1240, r.endEpoch);
 }
 
+void test_flags_warmup_alert_round_trip() {
+  MinuteRecord r = record(9);
+  r.flags = rowflag::WARMUP | rowflag::ALERT;
+  roundTrip(r);
+}
+
+void test_summary_last_minute_and_alert() {
+  NightSummaryBuilder s;
+  TEST_ASSERT_FALSE(s.result().alertFired);
+  MinuteRecord a = record(5), b = record(2), c = record(9);
+  s.add(a); s.add(b);
+  TEST_ASSERT_EQUAL_UINT16(5, s.result().lastMinute);  // highest, not last added
+  TEST_ASSERT_FALSE(s.result().alertFired);
+  c.flags = rowflag::ALERT;
+  s.add(c);
+  TEST_ASSERT_EQUAL_UINT16(9, s.result().lastMinute);
+  TEST_ASSERT_EQUAL_UINT16(3, s.result().minutes);
+  TEST_ASSERT_TRUE(s.result().alertFired);
+  s.add(b);  // later row without the flag does not clear it
+  TEST_ASSERT_TRUE(s.result().alertFired);
+}
+
 void test_summary_saturates() {
   NightSummaryBuilder s;
   MinuteRecord a = record(0);
@@ -282,6 +309,8 @@ int main() {
   RUN_TEST(test_buffer_bounds);
   RUN_TEST(test_summary_empty);
   RUN_TEST(test_summary_sequence);
+  RUN_TEST(test_flags_warmup_alert_round_trip);
+  RUN_TEST(test_summary_last_minute_and_alert);
   RUN_TEST(test_summary_saturates);
   return UNITY_END();
 }

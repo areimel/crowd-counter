@@ -77,6 +77,24 @@ void test_padding_edges_byte_at_a_time() {
   }
 }
 
+void test_wipe_clears_all_state() {
+  uint8_t msg[40];
+  for (size_t i = 0; i < sizeof msg; i++) msg[i] = static_cast<uint8_t>(i + 1);
+  Sha256 s;
+  s.update(msg, sizeof msg);  // leaves message bytes in the block buffer
+  s.wipe();
+  uint8_t raw[sizeof(Sha256)];
+  memcpy(raw, &s, sizeof raw);
+  for (size_t i = 0; i < sizeof raw; i++) TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, raw[i], "state byte not wiped");
+  // Usable again after reset(), with unchanged output.
+  uint8_t d[32], want[32];
+  s.reset();
+  s.update(msg, sizeof msg);
+  s.finish(d);
+  sha256(msg, sizeof msg, want);
+  TEST_ASSERT_EQUAL_MEMORY(want, d, 32);
+}
+
 void test_reset_reuses_object() {
   Sha256 s;
   s.update(reinterpret_cast<const uint8_t*>("junk"), 4);
@@ -97,6 +115,7 @@ int main() {
   RUN_TEST(test_million_a_chunked);
   RUN_TEST(test_chunked_equals_oneshot_all_splits);
   RUN_TEST(test_padding_edges_byte_at_a_time);
+  RUN_TEST(test_wipe_clears_all_state);
   RUN_TEST(test_reset_reuses_object);
   return UNITY_END();
 }

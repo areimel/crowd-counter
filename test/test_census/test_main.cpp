@@ -169,6 +169,14 @@ void test_background_rule() {
   TEST_ASSERT_EQUAL_UINT16(0, c.ble[static_cast<uint8_t>(DeviceClass::OTHER)]);
 }
 
+void test_background_clock_before_first_seen() {
+  Fixture f;  // first seen "in the future": age is 0, so never background
+  f.t.observe(makeObs(1, -50, Signal::BLE, AddrKind::FIXED, marker::BEACON), kNow + 50);
+  RawCounts c = takeCensus(f.t, f.allow, f.p, kNow);
+  TEST_ASSERT_EQUAL_UINT16(0, c.background);
+  TEST_ASSERT_EQUAL_UINT16(1, c.ble[static_cast<uint8_t>(DeviceClass::BEACON)]);
+}
+
 void test_counters_saturate() {
   static std::vector<DeviceEntry> big(131072);
   DeviceTable t(big.data(), 131072, 70000);
@@ -274,6 +282,7 @@ int main() {
   RUN_TEST(test_marker_priority_via_class);
   RUN_TEST(test_rotating_subsums);
   RUN_TEST(test_background_rule);
+  RUN_TEST(test_background_clock_before_first_seen);
   RUN_TEST(test_counters_saturate);
   RUN_TEST(test_capture_contents);
   RUN_TEST(test_capture_empty_table_is_valid_and_zeroed);

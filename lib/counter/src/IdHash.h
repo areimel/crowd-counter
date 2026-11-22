@@ -3,6 +3,7 @@
 // SHA-256(salt[16] || signal byte || mac[6]), never 0.
 #include <stdint.h>
 #include "CounterTypes.h"
+#include "SecureZero.h"
 #include "Sha256.h"
 
 namespace cc {
@@ -25,12 +26,9 @@ inline uint64_t hashId(const uint8_t salt[16], Signal signal, const uint8_t mac[
   for (int i = 0; i < 6; i++) msg[17 + i] = mac[i];
   sha256(msg, sizeof msg, digest);
   const uint64_t id = nonZeroId(digestToId(digest));
-  // Do not leave the raw address (or digest) on the stack. volatile stops
-  // the compiler from eliding the wipe as a dead store.
-  volatile uint8_t* m = msg;
-  volatile uint8_t* d = digest;
-  for (size_t i = 0; i < sizeof msg; i++) m[i] = 0;
-  for (size_t i = 0; i < sizeof digest; i++) d[i] = 0;
+  // sha256() wipes its own state; clear our copies of the address and digest.
+  secureZero(msg, sizeof msg);
+  secureZero(digest, sizeof digest);
   return id;
 }
 

@@ -22,9 +22,17 @@ inline uint64_t mixId(uint64_t x) {
 // DeviceEntry::state: 0 = free slot, 1 = live entry.
 class DeviceTable {
  public:
-  // slotCount must be a power of two (>= 2).
+  // slotCount must be a power of two (>= 2). A null table or fewer than 2 slots
+  // is inert: size() is 0, observe() is ignored, expire() removes nothing.
   DeviceTable(DeviceEntry* slots, uint32_t slotCount, uint32_t maxEntries)
-      : slots_(slots), mask_(slotCount - 1), slotCount_(slotCount), max_(maxEntries ? maxEntries : 1) {
+      : slots_(slots), mask_(0), slotCount_(slotCount), max_(maxEntries ? maxEntries : 1) {
+    if (slots_ == nullptr || slotCount_ < 2) {
+      slots_ = nullptr;
+      slotCount_ = 0;
+      max_ = 0;
+      return;
+    }
+    mask_ = slotCount_ - 1;
     if (max_ >= slotCount_) max_ = slotCount_ - slotCount_ / 8;
     if (max_ >= slotCount_) max_ = slotCount_ - 1;  // always keep a free slot
     if (max_ == 0) max_ = 1;
@@ -33,22 +41,23 @@ class DeviceTable {
 
   void clear() {
     for (uint32_t i = 0; i < slotCount_; ++i) {
-      slots_[i].id = 0;
-      slots_[i].state = kFree;
+      slots_[i] = DeviceEntry{};
     }
     size_ = 0;
     evictions_ = 0;
   }
 
   void observe(const Observation& o, uint32_t nowS) {
-    if (o.id == 0) return;
+    if (o.id == 0 || slots_ == nullptr) return;
     uint32_t i = find(o.id);
     if (i != kNone) {
       DeviceEntry& e = slots_[i];
       e.lastSeenS = nowS;
       e.markers |= o.markers;
       const int fresh = o.rssi;
-      const int smoothed = (3 * static_cast<int>(e.rssi) + fresh) / 4;
+      // Floor, not truncate: with negative dBm, truncation rounds toward the
+      // stronger value and the decay stalls up to 3 dB short of the real level.
+      const int smoothed = (3 * static_cast<int>(e.rssi) + fresh) >> 2;
       e.rssi = static_cast<int8_t>(fresh > smoothed ? fresh : smoothed);
       return;
     }
@@ -70,6 +79,7 @@ class DeviceTable {
 
   // Removes entries with nowS - lastSeenS > maxAgeS. Returns how many.
   uint32_t expire(uint32_t nowS, uint32_t maxAgeS) {
+    if (slots_ == nullptr) return 0;
     return sweep([&](const DeviceEntry& e) { return nowS - e.lastSeenS > maxAgeS; });
   }
 

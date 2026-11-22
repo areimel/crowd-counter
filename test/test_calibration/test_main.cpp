@@ -113,15 +113,25 @@ void test_wifi_needs_three_pairs() {
   TEST_ASSERT_FLOAT_WITHIN(1e-5f, 1.5f, r.wifi);
 }
 
-void test_wifi_zero_pairs_do_not_qualify() {
+void test_wifi_zero_pairs_pull_the_fit_down() {
   CalProfile p = empty();
   addPair(p, pr(20, 15, 10));
   addPair(p, pr(40, 30, 20));
+  addPair(p, pr(80, 0, 40));  // Wi-Fi heard nothing for 40 people: still evidence
+  Ratios r = fitRatios(p, DEF);
+  TEST_ASSERT_TRUE(r.wifiFitted);
+  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 750.0f / 2100.0f, r.wifi);
+  TEST_ASSERT_FLOAT_WITHIN(1e-5f, 2.0f, r.ble);
+}
+
+void test_wifi_all_zero_is_not_fitted() {
+  CalProfile p = empty();
+  addPair(p, pr(20, 0, 10));
+  addPair(p, pr(40, 0, 20));
   addPair(p, pr(80, 0, 40));
   Ratios r = fitRatios(p, DEF);
   TEST_ASSERT_FALSE(r.wifiFitted);
   TEST_ASSERT_EQUAL_FLOAT(3.0f, r.wifi);
-  TEST_ASSERT_FLOAT_WITHIN(1e-5f, 2.0f, r.ble);
 }
 
 void test_wifi_truth_zero_does_not_qualify() {
@@ -204,7 +214,8 @@ int main() {
   RUN_TEST(test_clamp_low_and_high);
   RUN_TEST(test_wifi_clamped);
   RUN_TEST(test_wifi_needs_three_pairs);
-  RUN_TEST(test_wifi_zero_pairs_do_not_qualify);
+  RUN_TEST(test_wifi_zero_pairs_pull_the_fit_down);
+  RUN_TEST(test_wifi_all_zero_is_not_fitted);
   RUN_TEST(test_wifi_truth_zero_does_not_qualify);
   RUN_TEST(test_ring_wraps_after_sixteen);
   RUN_TEST(test_ring_counts_and_next_advance);
