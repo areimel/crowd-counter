@@ -10,17 +10,26 @@ namespace cc {
 // listen()/pause() are called by the RadioScheduler task only. The rx
 // callback runs in the Wi-Fi driver task, hashes the sender on its own stack
 // through the sink and keeps nothing.
+//
+// A probe is attributed to a channel from the frame's own receive channel, so
+// frames still queued in the driver after a channel switch are counted on the
+// channel they were heard on. Frames on a channel outside the list given to
+// begin() are ignored.
 class WifiSniffer {
  public:
-  bool begin(ObservationSink& sink);  // bring-up; promiscuous stays OFF
-  // Tune to `channel`, then enable promiscuous. `channelIdx` (0..WIFI_CHANNELS_MAX-1)
-  // selects the per-channel probe counter in RadioStats::wifiProbes.
-  void listen(uint8_t channel, uint8_t channelIdx);
-  void pause();  // promiscuous off; later frames are not attributed to a channel
+  // Bring-up; promiscuous stays OFF. `channels` (count <= WIFI_CHANNELS_MAX) is
+  // the list listen() indexes into and the per-channel probe counters follow.
+  bool begin(ObservationSink& sink, const uint8_t* channels, uint8_t count);
+  // Enable promiscuous (first call), then tune to channels[channelIdx].
+  void listen(uint8_t channelIdx);
+  void pause();  // promiscuous off
   bool ready() const { return ready_; }
 
  private:
   bool ready_ = false;
+  bool promiscuous_ = false;
+  uint8_t channels_[WIFI_CHANNELS_MAX] = {};
+  uint8_t count_ = 0;
 };
 
 }  // namespace cc

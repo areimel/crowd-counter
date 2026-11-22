@@ -3,16 +3,21 @@
 #include <esp_system.h>
 #include <esp_random.h>
 #include <esp_rom_crc.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "Log.h"
+#include "SecureZero.h"
 
 namespace cc {
 namespace rtc {
 namespace {
 
 constexpr uint32_t MAGIC = 0x434e5354;  // "CNST"
-constexpr uint16_t VERSION = 1;
+constexpr uint16_t VERSION = 2;
+static_assert(sizeof(cc::NightState) == 832,
+              "NightState changed size: bump VERSION above (old RTC records are then rejected "
+              "instead of misread), then update this expected size");
 
 struct Record {
   uint32_t magic;
@@ -28,18 +33,32 @@ uint32_t crcOf(const Record& r) {
   return esp_rom_crc32_le(0, reinterpret_cast<const uint8_t*>(&r), offsetof(Record, crc));
 }
 
-// Volatile so the compiler cannot drop a wipe of a dead stack copy.
-void wipeBytes(void* p, size_t n) {
-  volatile uint8_t* v = static_cast<volatile uint8_t*>(p);
-  for (size_t i = 0; i < n; i++) v[i] = 0;
-}
+void wipe() { secureZero(&g_rec, sizeof(g_rec)); }
 
-void wipe() { wipeBytes(&g_rec, sizeof(g_rec)); }
+// Reset reasons after which RTC memory is intact AND the firmware merely
+// restarted with power held (crash, watchdog, software or USB/JTAG reset).
+// Everything else (power-on, external pin, brownout, deep sleep, power glitch,
+// unknown, ...) is treated as a cold start: a new night.
+bool isWarmReset(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_SW:
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_CPU_LOCKUP:
+    case ESP_RST_USB:
+    case ESP_RST_JTAG:
+      return true;
+    default:
+      return false;
+  }
+}
 
 }  // namespace
 
 bool load(NightState& out) {
-  if (esp_reset_reason() == ESP_RST_POWERON) {
+  if (!isWarmReset(esp_reset_reason())) {
     wipe();
     return false;
   }
@@ -48,11 +67,11 @@ bool load(NightState& out) {
   if (r.magic != MAGIC || r.version != VERSION || r.size != sizeof(NightState) ||
       r.crc != crcOf(r)) {
     LOG_W("rtc: no valid night state");
-    wipeBytes(&r, sizeof(r));
+    secureZero(&r, sizeof(r));
     return false;
   }
   out = r.state;
-  wipeBytes(&r, sizeof(r));  // the salt stays only in RTC memory and the caller's copy
+  secureZero(&r, sizeof(r));  // the salt stays only in RTC memory and the caller's copy
   return true;
 }
 
@@ -65,14 +84,12 @@ void save(const NightState& s) {
   r.state = s;
   r.crc = crcOf(r);
   memcpy(&g_rec, &r, sizeof(r));
-  wipeBytes(&r, sizeof(r));
+  secureZero(&r, sizeof(r));
 }
 
 void clear() { wipe(); }
 
 void freshSalt(uint8_t out[16]) { esp_fill_random(out, 16); }
-
-int resetReason() { return static_cast<int>(esp_reset_reason()); }
 
 const char* resetReasonName() {
   switch (esp_reset_reason()) {

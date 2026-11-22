@@ -32,6 +32,7 @@ class NightStore {
   size_t prune(size_t keepCount, size_t minFreeBytes, uint32_t protectId);
   size_t usedBytes() const;
   size_t totalBytes() const;
+  size_t freeBytes() const;  // total - used, 0 if used >= total or not mounted
 
  private:
   using IdFn = void (*)(uint32_t id, void* ctx);

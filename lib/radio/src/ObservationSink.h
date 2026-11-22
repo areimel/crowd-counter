@@ -26,7 +26,9 @@ class ObservationSink {
 
   bool aboveFloor(int8_t rssi) const { return rssi >= rssiFloor_; }
 
-  // From a radio callback. Never blocks; a full queue counts a drop.
+  // From a radio callback. Never blocks; a full queue counts a drop. The
+  // caller must already have applied aboveFloor() (both radios do, before any
+  // parsing work); submit does not check it again.
   void submit(Signal signal, const uint8_t mac[6], int8_t rssi, AddrKind kind, uint8_t markers);
 
   // Counters bumped by the radios (callback-safe).
@@ -38,6 +40,11 @@ class ObservationSink {
 
   // Main loop: non-blocking.
   bool poll(Observation& out);
+  // Discard everything queued. Call after setSalt() on a salt change so ids
+  // hashed with the old salt never reach the new night. (An observation whose
+  // callback copied the old salt just before setSalt may still land after the
+  // flush; it is at most a handful of frames.)
+  void flush();
   RadioStats stats() const;
 
  private:

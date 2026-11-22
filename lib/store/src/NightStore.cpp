@@ -13,7 +13,6 @@ constexpr const char* kMountPoint = "/littlefs";
 constexpr const char* kPartition = "spiffs";
 constexpr const char* kDir = "/nights";
 constexpr const char* kExt = ".log";
-constexpr uint8_t kMaxOpenFiles = 5;
 
 // The one place that builds a night file path.
 void pathFor(uint32_t id, char* out, size_t n) {
@@ -41,11 +40,27 @@ bool writeWithNewline(File& f, const char* text) {
   return f.write('\n') == 1;
 }
 
+// Write `text` (plus a newline if missing) to `f`, close it, and confirm the
+// file grew by exactly that many bytes. The buffered write can "succeed" and
+// only fail at close on a full filesystem, so the size is the only truth.
+// `sizeBefore` is the file size before the open (0 for a new file).
+bool writeAndVerify(const char* path, File& f, const char* text, size_t sizeBefore) {
+  const size_t len = strlen(text);
+  const size_t expected = len + ((len && text[len - 1] == '\n') ? 0 : 1);
+  const bool wrote = writeWithNewline(f, text);
+  f.close();
+  if (!wrote) return false;
+  File check = LittleFS.open(path, FILE_READ);
+  const size_t after = check ? check.size() : 0;
+  if (check) check.close();
+  return after == sizeBefore + expected;
+}
+
 }  // namespace
 
 bool NightStore::begin() {
   ready_ = false;
-  if (!LittleFS.begin(true, kMountPoint, kMaxOpenFiles, kPartition)) {
+  if (!LittleFS.begin(true, kMountPoint, 5 /* ignored by LittleFS.cpp */, kPartition)) {
     LOG_E("night store: mount/format failed");
     return false;
   }
@@ -75,10 +90,9 @@ bool NightStore::create(uint32_t nightId, const char* headerText) {
     LOG_E("night store: create failed");
     return false;
   }
-  bool ok = writeWithNewline(f, headerText);
-  f.close();
+  const bool ok = writeAndVerify(path, f, headerText, 0);
   if (!ok) {
-    LOG_E("night store: header write failed");
+    LOG_E("night store: header write failed (full?)");
     LittleFS.remove(path);
   }
   return ok;
@@ -88,14 +102,18 @@ bool NightStore::append(uint32_t nightId, const char* line) {
   if (!ready_ || nightId == 0 || !line || !exists(nightId)) return false;
   char path[40];
   pathFor(nightId, path, sizeof path);
+  size_t before = 0;
+  if (File probe = LittleFS.open(path, FILE_READ)) {
+    before = probe.size();
+    probe.close();
+  }
   File f = LittleFS.open(path, FILE_APPEND);
   if (!f) {
     LOG_E("night store: append open failed");
     return false;
   }
-  bool ok = writeWithNewline(f, line);
-  f.close();
-  if (!ok) LOG_W("night store: append write failed (full?)");
+  const bool ok = writeAndVerify(path, f, line, before);
+  if (!ok) LOG_E("night store: append failed (full?)");
   return ok;
 }
 
@@ -192,7 +210,7 @@ size_t NightStore::prune(size_t keepCount, size_t minFreeBytes, uint32_t protect
     size_t count = 0;
     scan([](uint32_t, void* c) { ++*static_cast<size_t*>(c); }, &count);
     bool tooMany = count > keepCount;
-    bool tooFull = totalBytes() - usedBytes() < minFreeBytes;
+    bool tooFull = freeBytes() < minFreeBytes;
     if ((!tooMany && !tooFull) || !removeOldest(protectId)) break;
     ++deleted;
   }
@@ -202,5 +220,9 @@ size_t NightStore::prune(size_t keepCount, size_t minFreeBytes, uint32_t protect
 
 size_t NightStore::usedBytes() const { return ready_ ? LittleFS.usedBytes() : 0; }
 size_t NightStore::totalBytes() const { return ready_ ? LittleFS.totalBytes() : 0; }
+size_t NightStore::freeBytes() const {
+  const size_t total = totalBytes(), used = usedBytes();
+  return used >= total ? 0 : total - used;
+}
 
 }  // namespace cc

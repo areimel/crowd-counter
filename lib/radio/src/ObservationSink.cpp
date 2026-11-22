@@ -3,15 +3,9 @@
 #include <string.h>
 
 #include "IdHash.h"
+#include "SecureZero.h"
 
 namespace cc {
-
-namespace {
-void wipe(uint8_t* p, size_t n) {
-  volatile uint8_t* v = p;
-  for (size_t i = 0; i < n; i++) v[i] = 0;
-}
-}  // namespace
 
 bool ObservationSink::begin(int8_t rssiFloor) {
   rssiFloor_ = rssiFloor;
@@ -35,12 +29,12 @@ bool ObservationSink::copySalt(uint8_t out[16]) {
 }
 
 void ObservationSink::submit(Signal signal, const uint8_t mac[6], int8_t rssi, AddrKind kind, uint8_t markers) {
-  if (queue_ == nullptr || !aboveFloor(rssi)) return;
+  if (queue_ == nullptr) return;  // callers have already applied aboveFloor()
   uint8_t salt[16];
   if (!copySalt(salt)) return;
   Observation o = {};
   o.id = hashId(salt, signal, mac);
-  wipe(salt, sizeof salt);
+  secureZero(salt, sizeof salt);
   o.rssi = rssi;
   o.signal = signal;
   o.addrKind = kind;
@@ -50,6 +44,10 @@ void ObservationSink::submit(Signal signal, const uint8_t mac[6], int8_t rssi, A
 
 bool ObservationSink::poll(Observation& out) {
   return queue_ != nullptr && xQueueReceive(queue_, &out, 0) == pdTRUE;
+}
+
+void ObservationSink::flush() {
+  if (queue_ != nullptr) xQueueReset(queue_);
 }
 
 RadioStats ObservationSink::stats() const {

@@ -1,5 +1,4 @@
 #include "Board.h"
-#if BOARD_DRIVER_M5
 #include <M5Unified.h>
 #include "Log.h"
 
@@ -36,14 +35,10 @@ void begin(uint8_t brightness) {
   cfg.internal_rtc = true;
   cfg.output_power = false;
   M5.begin(cfg);
-#if BOARD_HAS_DISPLAY
   // StickS3 ST7789 panel is 135x240 with rotation_offset 0 (M5GFX
   // esp32s3_board_data.hpp, panel_st7789v2), so rotation 0 is portrait.
   M5.Display.setRotation(0);
   M5.Display.setBrightness(brightness);
-#else
-  (void)brightness;
-#endif
   // Callers own debounce; M5Unified only supplies the current button state.
   M5.BtnA.setDebounceThresh(0);
   M5.BtnB.setDebounceThresh(0);
@@ -52,7 +47,6 @@ void begin(uint8_t brightness) {
 }
 
 void update() { M5.update(); }
-uint8_t buttonCount() { return 2; }
 
 bool isPressed(uint8_t i) {
   return i == 0 ? M5.BtnA.isPressed() : i == 1 ? M5.BtnB.isPressed() : false;
@@ -71,11 +65,7 @@ int batteryMv() {
 }
 
 void setBrightness(uint8_t level) {
-#if BOARD_HAS_DISPLAY
   M5.Display.setBrightness(level);
-#else
-  (void)level;
-#endif
 }
 
 void tone(uint16_t hz, uint16_t ms, uint8_t volume) {
@@ -108,11 +98,11 @@ bool setRtcEpoch(uint32_t epoch) {
   dt.time.minutes = int8_t(sod % 3600 / 60);
   dt.time.seconds = int8_t(sod % 60);
   M5.Rtc.setDateTime(dt);
-  return true;
+  // The I2C write can fail silently: read the time back and compare.
+  const uint32_t back = rtcEpoch();
+  const uint32_t diff = back > epoch ? back - epoch : epoch - back;
+  return back != 0 && diff <= 2;
 }
 
-#if BOARD_HAS_DISPLAY
 M5GFX& display() { return M5.Display; }
-#endif
 }  // namespace board
-#endif  // BOARD_DRIVER_M5
