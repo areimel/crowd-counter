@@ -63,7 +63,7 @@ def board_build(project, env, boards, version, core, build_root):
     config = load_yaml(config_path)
     ctx = Context(env, board)
     try:
-        expected = render(config, ctx, config_path.parent)
+        expected = render(config, ctx)
     except ConfigError as exc:
         raise ValueError(f"{env}: invalid config: {exc}") from exc
     build = Path(build_root) / env

@@ -1,7 +1,7 @@
 """Validate config.yaml and compile it into the firmware's generated header.
 
-Sections live in scripts/config/sections (plus an optional `schema:` module), so
-firmware never parses key names, text, or labels.
+Sections live in scripts/config/sections, so firmware never parses key names,
+text, or labels.
 """
 
 import argparse
@@ -19,10 +19,10 @@ import yaml  # noqa: E402
 HEADER = "// Generated from config.yaml. Edit YAML, not this file."
 
 
-def render(data, ctx, base=Path(".")):
+def render(data, ctx):
     """Return the header text for `data`, raising ConfigError on the first invalid key."""
-    modules = load_sections(data, base)
-    fields(data, [], "", [m.KEY for m in modules] + ["schema"])
+    modules = load_sections()
+    fields(data, [], "", [m.KEY for m in modules])
     validated = []
     for module in modules:
         if module.KEY not in data and module.REQUIRED:
@@ -41,7 +41,7 @@ def generate(source, destination, ctx):
     """Render `source` into `destination`."""
     source = Path(source)
     try:
-        header = render(load_yaml(source), ctx, source.parent)
+        header = render(load_yaml(source), ctx)
     except (ConfigError, yaml.YAMLError) as exc:
         raise ConfigError("", f"Invalid {source}: {exc}") from exc
     write_if_changed(destination, header)

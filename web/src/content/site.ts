@@ -15,7 +15,7 @@ export const site = {
   noRelease:
     "No release published yet. Build locally with pio run -e sticks3, or publish a release to enable browser install.",
   privacyNote:
-    "Receive only: the device never connects to, pings or transmits to any device. Addresses are salted-hashed in memory and never stored, and logs hold aggregate counts only; ask the venue's permission first.",
+    "Receive only: the device never connects to, pings or transmits to any device. Addresses are salted and hashed on receipt, never stored by the application or written to flash or serial, and logs hold aggregate counts only; ask the venue's permission first.",
   features: [
     {
       title: "One number at a glance",
@@ -27,11 +27,11 @@ export const site = {
     },
     {
       title: "Privacy by design",
-      body: "Receive only. Nothing connects to or transmits to a device. Addresses are salted-hashed, and the salt lives only in RTC memory and is gone at power-off. No core dumps are written, and night logs hold aggregate counts only.",
+      body: "Receive only. Nothing connects to or transmits to a device. Addresses are salted and hashed on receipt, and the salt is held only in RAM, never written to flash or printed, and is gone at power-off. A new salt is generated at every cold power-on and at the end of each night. The ids are pseudonyms: someone with physical debug access to a running device could in principle recover addresses, but nothing stored or exported identifies a device. No core dumps are written, and night logs hold aggregate counts only.",
     },
     {
       title: "Night log and CSV export",
-      body: "One row per minute, with the last 20 nights kept. Export over USB with scripts/export_csv.py. The summary shows the peak and the minutes at or above X.",
+      body: "One row per minute, with the newest 20 nights kept. Export over USB with scripts/export_csv.py from the repository, or send export from any serial terminal and capture the text between BEGIN and END. The summary shows the peak and the minutes at or above X.",
     },
     {
       title: "Calibration by venue type",
@@ -50,12 +50,12 @@ export const site = {
   ],
   gigSteps: [
     "Ask the venue's permission first, and be upfront that the device is running.",
-    "Power on at load-in. Choose New night, or Resume if prompted. The prompt waits 15 s, and no press starts a new night.",
-    "Set X in settings. KEY1 long press opens settings. In settings, KEY2 adds 10 on a press and takes 10 off on a double-click.",
-    "At soundcheck, run setup mode (KEY2 long press) with the band's and staff's phones nearby. It finalises after a full 5-minute window, so you can walk away.",
+    "Power on at load-in. Choose New night, or Resume if prompted. If nobody presses a button within the prompt's timeout, a new night starts.",
+    "Set X in settings. KEY1 long press opens settings. In settings, KEY2 adds one step on a press and takes one step off on a double-click.",
+    "At soundcheck, run setup mode with the band's and staff's phones nearby: hold KEY2, then hold it again when the screen says to. It finalises after a full averaging window, so you can walk away.",
     "Place it centrally, not on an amp, and power it from a USB-C power bank.",
     "Glance at the number between songs. It is an estimate (est.). The grey, amber and green bar shows how close it is to X.",
-    "After the show, export the night log over USB with scripts/export_csv.py.",
+    "After the show, export the night log over USB: use scripts/export_csv.py from the repository, or any serial terminal that sends export and saves the text between BEGIN and END.",
   ],
   faq: [
     {
@@ -72,7 +72,7 @@ export const site = {
     },
     {
       q: "Is it legal? What about privacy?",
-      a: "It is receive only: it never connects to, pings or disrupts a device, and nothing transmits. No addresses are stored or printed, and logs hold aggregate counts. Rules differ by state and country. This is not legal advice. Ask the venue before you use it.",
+      a: "It is receive only: it never connects to, pings or disrupts a device, and nothing transmits. No addresses are stored by the application or printed, and logs hold aggregate counts. Rules differ by state and country. This is not legal advice. Ask the venue before you use it.",
     },
     {
       q: "How long does the battery last?",
@@ -80,7 +80,7 @@ export const site = {
     },
     {
       q: "Does a reflash erase my nights?",
-      a: "No. Flashing keeps settings and night logs unless you choose to erase. Export first with scripts/export_csv.py to be safe.",
+      a: "No. Flashing keeps settings and night logs unless you choose to erase. Export first to be safe: scripts/export_csv.py in the repository, or any serial terminal that sends export and saves the text between BEGIN and END.",
     },
     {
       q: "How do I recover a bad flash?",

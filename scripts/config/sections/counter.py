@@ -6,8 +6,10 @@ from config.core import ConfigError, boolean, cfloat, fields, integer
 KEY, REQUIRED, DEFAULT = "counter", True, None
 INCLUDES = ["<stdint.h>"]
 
+RSSI_GATE_MIN, RSSI_GATE_MAX = -95, -50  # one definition: validated here, emitted for the firmware
+
 # (key, low, high) for plain integers.
-SCALARS = [("window_s", 60, 900), ("rssi_gate_dbm", -95, -50), ("recompute_s", 1, 30),
+SCALARS = [("window_s", 60, 900), ("rssi_gate_dbm", RSSI_GATE_MIN, RSSI_GATE_MAX), ("recompute_s", 1, 30),
            ("smoothing_s", 1, 300), ("peak_hold_min", 1, 30), ("alert_hold_s", 0, 300),
            ("table_capacity", 500, 6000), ("background_after_min", 10, 600),
            ("blend_ble_pct", 0, 100)]
@@ -54,8 +56,7 @@ def validate(value, ctx):
                                                          "venues", "alert"], KEY)
     cfg = {k: integer(value[k], low, high, f"{KEY}.{k}") for k, low, high in SCALARS}
     recompute = cfg["recompute_s"]
-    smoothing = integer(value["smoothing_s"], recompute, 300, f"{KEY}.smoothing_s")
-    if smoothing % recompute:
+    if cfg["smoothing_s"] % recompute:
         raise ConfigError(f"{KEY}.smoothing_s", f"must be a multiple of recompute_s ({recompute})")
     path = f"{KEY}.class_weights_pct"
     weights = fields(value["class_weights_pct"], CLASSES, path)
@@ -72,6 +73,8 @@ def emit(cfg, ctx):
     lines = [
         f"constexpr uint32_t WINDOW_S = {cfg['window_s']};",
         f"constexpr int8_t RSSI_GATE_DBM = {cfg['rssi_gate_dbm']};",
+        f"constexpr int8_t RSSI_GATE_MIN = {RSSI_GATE_MIN};",
+        f"constexpr int8_t RSSI_GATE_MAX = {RSSI_GATE_MAX};",
         f"constexpr uint16_t RECOMPUTE_S = {cfg['recompute_s']};",
         f"constexpr uint16_t SMOOTHING_S = {cfg['smoothing_s']};",
         f"constexpr uint16_t PEAK_HOLD_S = {cfg['peak_hold_min'] * 60};",

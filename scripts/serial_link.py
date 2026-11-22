@@ -3,6 +3,11 @@
 Frame parsers take any iterable of text lines, so tests can feed plain lists.
 pyserial is imported lazily inside open_port(); run the tools with the repo
 venv's python (.venv/bin/python) if it is missing from the system python.
+
+open_port() creates the Serial object unopened, sets dtr/rts low, then opens it,
+because pyserial otherwise asserts DTR/RTS on open, which commonly resets an
+ESP32-S3 on its native USB-Serial/JTAG port and would lose the command sent right
+after. This is unverified on hardware.
 """
 import argparse
 import sys
@@ -34,7 +39,11 @@ def open_port(port, baud=DEFAULT_BAUD, timeout=0.2):
         raise LinkError("pyserial is not installed for this python; run the tool with the "
                         "repo venv's python, e.g. .venv/bin/python scripts/<tool>.py") from None
     try:
-        ser = serial.Serial(port, baud, timeout=timeout)
+        ser = serial.Serial(None, baud, timeout=timeout)  # unopened, so DTR/RTS can be set first
+        ser.dtr = False
+        ser.rts = False
+        ser.port = port
+        ser.open()
     except (serial.SerialException, OSError) as exc:
         raise LinkError(f"cannot open {port}: {exc}") from None
     time.sleep(0.1)

@@ -6,13 +6,12 @@ import KeyValue from "./KeyValue.astro";
 interface Props {
   board: Board;
   version: string;
-  hidden?: boolean;
 }
-const { board, version, hidden = false } = Astro.props;
+const { board, version } = Astro.props;
 const manifest = withBase(`firmware/${board.manifest}`);
 ---
 
-<div data-install-for={board.id} hidden={hidden}>
+<div>
   <Panel tag="Install" title={board.label}>
     <KeyValue
       items={[

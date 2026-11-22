@@ -93,9 +93,6 @@ main {
   }
 }
 
-main > [data-install-for] {
-  margin-top: var(--space-4);
-}
 .section > .btn {
   justify-self: start;
 }

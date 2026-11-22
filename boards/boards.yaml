@@ -1,4 +1,4 @@
-# Board capability table. The PlatformIO env name selects a row (env sticks3 -> sticks3).
+# Board table. The PlatformIO env name selects a row (env sticks3 -> sticks3).
 # Build facts (partitions, flash, memory) live in platformio.ini; this file only
-# describes what the hardware has.
-sticks3: {label: "M5Stack StickS3", chip: ESP32-S3, buttons: 2, display: true, battery: true}
+# names the board for the packager and the web flasher.
+sticks3: {label: "M5Stack StickS3", chip: ESP32-S3}

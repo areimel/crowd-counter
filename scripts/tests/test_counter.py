@@ -8,6 +8,8 @@ from generate_config import render
 EXPECTED = [
     "constexpr uint32_t WINDOW_S = 300;",
     "constexpr int8_t RSSI_GATE_DBM = -85;",
+    "constexpr int8_t RSSI_GATE_MIN = -95;",
+    "constexpr int8_t RSSI_GATE_MAX = -50;",
     "constexpr uint16_t RECOMPUTE_S = 5;",
     "constexpr uint16_t SMOOTHING_S = 60;",
     "constexpr uint16_t PEAK_HOLD_S = 600;",

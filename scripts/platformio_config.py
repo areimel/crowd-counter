@@ -1,5 +1,5 @@
 """PlatformIO pre-script: validate config.yaml in PlatformIO's own Python process
-and expose the board table and generated header to the build."""
+and expose the board label, version and generated header to the build."""
 import sys
 from pathlib import Path
 
@@ -22,8 +22,8 @@ if env["PIOPLATFORM"] != "native":  # noqa: F821
         raise SystemExit(f"Configuration error: {exc}") from exc
     for warning in ctx.warnings:
         print(f"warning: {warning}")
-    strings, plain = board_defines(board_id, ctx.board, firmware_version(project_dir))
+    strings = board_defines(ctx.board, firmware_version(project_dir))
     env.Append(  # noqa: F821
         CPPPATH=[str(out_dir)],
-        CPPDEFINES=[(k, env.StringifyMacro(v)) for k, v in strings] + plain,  # noqa: F821
+        CPPDEFINES=[(k, env.StringifyMacro(v)) for k, v in strings],  # noqa: F821
     )

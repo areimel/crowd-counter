@@ -41,7 +41,6 @@
 #                           devices-per-person ratios, replaced by calibration
 #     alert                 flash (true/false), chime (true/false), volume 0-160
 #                           (capped to avoid brownout)
-#   schema    optional path to a .py module that adds project-specific sections
 
 project:
   name: Crowd Counter

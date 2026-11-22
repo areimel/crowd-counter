@@ -72,20 +72,6 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(cfloat(0.8), "0.8f")
         self.assertEqual(cfloat(0), "0.0f")
 
-    def test_schema_hook(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, "extra.py").write_text(
-                "KEY='extra'\nREQUIRED=False\nDEFAULT=None\nINCLUDES=[]\n"
-                "def validate(v, ctx): return v\n"
-                "def emit(cfg, ctx): return ['constexpr int EXTRA = 7;']\n", encoding="utf-8")
-            data = default_config()
-            data["schema"] = "extra.py"
-            data["extra"] = 1
-            header = render(data, make_ctx(), base=Path(tmp))
-            self.assertIn("EXTRA = 7", header)
-            with self.assertRaises(ConfigError):
-                render(data, make_ctx(), base=Path(tmp) / "nowhere")
-
 
 if __name__ == "__main__":
     unittest.main()

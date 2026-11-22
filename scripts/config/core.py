@@ -1,5 +1,4 @@
 """Shared building blocks: YAML loading, validation helpers, section loading."""
-import importlib.util
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -109,24 +108,8 @@ def write_if_changed(path, text):
     return True
 
 
-def _load_module(path, name):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def load_sections(data, base=Path(".")):
-    """Built-in section modules plus the optional `schema:` module (relative to `base`)."""
+def load_sections():
+    """The built-in section modules."""
     from config import sections
 
-    modules = list(sections.BUILTIN)
-    schema = data.get("schema") if isinstance(data, dict) else None
-    if schema is not None:
-        if not isinstance(schema, str):
-            raise ConfigError("schema", "must be a path to a .py file")
-        path = Path(base) / schema
-        if not path.is_file():
-            raise ConfigError("schema", f"{path} not found")
-        modules.append(_load_module(path, "config_schema"))
-    return modules
+    return list(sections.BUILTIN)
