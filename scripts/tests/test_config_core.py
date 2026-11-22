@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 from support import make_ctx, default_config
-from config.core import ConfigError, UniqueKeyLoader, cstr, fields, integer, load_secrets, write_if_changed
+from config.core import ConfigError, UniqueKeyLoader, cfloat, cstr, fields, integer, number, write_if_changed
 from generate_config import render
 
 
@@ -21,8 +21,8 @@ class CoreTests(unittest.TestCase):
 
     def test_fields_reports_unknown_with_path(self):
         with self.assertRaises(ConfigError) as caught:
-            fields({"nmae": "x"}, ["name"], "ble", optional=())
-        self.assertIn("ble.nmae", str(caught.exception))
+            fields({"nmae": "x"}, ["name"], "counter", optional=())
+        self.assertIn("counter.nmae", str(caught.exception))
 
     def test_integer_bounds(self):
         self.assertEqual(integer(5, 5, 100, "x"), 5)
@@ -51,30 +51,26 @@ class CoreTests(unittest.TestCase):
         self.assertIn("bluetoth", str(caught.exception))
 
     def test_missing_required_section(self):
-        data = default_config()
-        del data["ble"]
-        with self.assertRaises(ConfigError) as caught:
-            render(data, make_ctx())
-        self.assertIn("ble", str(caught.exception))
-
-    def test_secrets_rejects_unknown_keys(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "secrets.yaml"
-            path.write_text("ota_password: x\nother: y\n", encoding="utf-8")
-            with self.assertRaises(ConfigError):
-                load_secrets(path)
-            path.write_text("ota_password: x\nwifi_ssid: s\nwifi_password: p\n", encoding="utf-8")
-            self.assertEqual(load_secrets(path)["wifi_ssid"], "s")
-            self.assertEqual(load_secrets(Path(tmp) / "missing.yaml"), {})
-
-    def test_malformed_yaml_names_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "secrets.yaml"
-            path.write_text("ota_password: [unclosed\n", encoding="utf-8")
+        for key in ("project", "counter"):
+            data = default_config()
+            del data[key]
             with self.assertRaises(ConfigError) as caught:
-                load_secrets(path)
-            self.assertIn("secrets.yaml", str(caught.exception))
-            self.assertIn("malformed YAML", str(caught.exception))
+                render(data, make_ctx())
+            self.assertIn(key, str(caught.exception))
+
+    def test_number_bounds(self):
+        self.assertEqual(number(1, 0.3, 5.0, "x"), 1)
+        self.assertEqual(number(0.3, 0.3, 5.0, "x"), 0.3)
+        self.assertEqual(number(5.0, 0.3, 5.0, "x"), 5.0)
+        for bad in (0.29, 5.01, True, "1.0", None):
+            with self.assertRaises(ConfigError):
+                number(bad, 0.3, 5.0, "x")
+
+    def test_cfloat_literals(self):
+        self.assertEqual(cfloat(1.45), "1.45f")
+        self.assertEqual(cfloat(1), "1.0f")
+        self.assertEqual(cfloat(0.8), "0.8f")
+        self.assertEqual(cfloat(0), "0.0f")
 
     def test_schema_hook(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -85,7 +81,7 @@ class CoreTests(unittest.TestCase):
             data = default_config()
             data["schema"] = "extra.py"
             data["extra"] = 1
-            header, _ = render(data, make_ctx(), base=Path(tmp))
+            header = render(data, make_ctx(), base=Path(tmp))
             self.assertIn("EXTRA = 7", header)
             with self.assertRaises(ConfigError):
                 render(data, make_ctx(), base=Path(tmp) / "nowhere")

@@ -11,8 +11,8 @@ from config.core import Context, UniqueKeyLoader  # noqa: E402
 BOARDS = yaml.load((ROOT / "boards/boards.yaml").read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
 
 
-def make_ctx(board_id="sticks3", secrets=None):
-    return Context(board_id=board_id, board=BOARDS[board_id], secrets=secrets or {}, warnings=[])
+def make_ctx(board_id="sticks3"):
+    return Context(board_id=board_id, board=BOARDS[board_id], warnings=[])
 
 
 def default_config():
