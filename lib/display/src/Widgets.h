@@ -1,5 +1,6 @@
 #pragma once
 #include <M5GFX.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "CounterTypes.h"
 #include "Theme.h"
@@ -23,7 +24,6 @@ constexpr int BAR_X = 4, BAR_W = W - 2 * BAR_X, BAR_H = 28;  // status bar
 constexpr int BIG_MAX_W = 131;        // widest big number (127 px target + slack)
 constexpr float BIG_SX_MAX = 1.5f;    // horizontal stretch cap (1-2 digits)
 constexpr float BIG_SY = 2.0f;        // Font7 is 48 tall: 96 px digits
-constexpr int BIG_H = 96;
 constexpr int PULSE_DOTS = 4, PULSE_PITCH = 10, PULSE_R = 3;
 
 // ---- Text -------------------------------------------------------------------
@@ -44,6 +44,11 @@ void upper(char* out, size_t cap, const char* in);
 // (settings list) so every row of a screen looks alike.
 void row(M5Canvas& c, int y, const char* name, const char* value, bool highlighted = false,
          int maxNameSize = 2);
+// Numeric value / printf-formatted value convenience wrappers around row().
+void rowNum(M5Canvas& c, int y, const char* name, long value, bool highlighted = false,
+            int maxNameSize = 2);
+void rowf(M5Canvas& c, int y, const char* name, const char* fmt, ...)
+    __attribute__((format(printf, 4, 5)));
 // Size-2 title at left, optional size-1 DIM text at right, hairline below.
 void header(M5Canvas& c, const char* title, const char* right = nullptr);
 // Right-aligned battery icon + percent; pct < 0 shows "--"; low (<=15) in ALERT.

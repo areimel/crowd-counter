@@ -27,6 +27,7 @@ class UiController {
     manual_ = 0;
     item_ = cc::SettingsItem::THRESHOLD;
     dimmed_ = false;
+    confirming_ = false;
     lastPress_ = nowMs;
     now_ = nowMs;
     if (promptNight) {
@@ -41,9 +42,16 @@ class UiController {
                         uint32_t nowMs) {
     if (e == GestureEvent::NONE || button > 1) return none();
     now_ = nowMs;
+    expireConfirm();
     lastPress_ = nowMs;
     if (dimmed_) {  // wake-press is consumed
       dimmed_ = false;
+      confirming_ = false;
+      return none();
+    }
+    if (confirming_) {  // second KEY2 hold fires; anything else cancels and is consumed
+      confirming_ = false;
+      if (button == 1 && e == GestureEvent::HOLD) return {cc::UiAction::START_CAPTURE, 0};
       return none();
     }
     switch (screen_) {
@@ -58,11 +66,16 @@ class UiController {
 
   cc::UiEvent tick(uint32_t nowMs) {
     now_ = nowMs;
+    expireConfirm();
     if (screen_ == cc::Screen::NIGHT_PROMPT) {
       if (nowMs - promptStart_ >= lim_.promptTimeoutMs) return endPrompt(cc::UiAction::NEW_NIGHT);
       return none();
     }
-    if (!dimmed_ && nowMs - lastPress_ >= lim_.dimAfterMs) dimmed_ = true;
+    if (screen_ == cc::Screen::SETTINGS && lim_.settingsTimeoutMs &&
+        nowMs - lastPress_ >= lim_.settingsTimeoutMs) {
+      leaveSettings();
+    }
+    if (!dimmed_ && !confirming_ && nowMs - lastPress_ >= lim_.dimAfterMs) dimmed_ = true;
     return none();
   }
 
@@ -73,6 +86,19 @@ class UiController {
     lastPress_ = nowMs;
   }
 
+  // Alert fired: wake and show the count so the flash is visible. A prompt
+  // only wakes (the night choice must not be skipped).
+  void showCount(uint32_t nowMs) {
+    wake(nowMs);
+    if (screen_ == cc::Screen::COUNT || screen_ == cc::Screen::NIGHT_PROMPT) return;
+    if (screen_ == cc::Screen::SETTINGS) leaveSettings();
+    screen_ = cc::Screen::COUNT;
+    confirming_ = false;
+  }
+
+  // wantsHold stays true while confirming: a hold on either key is a valid
+  // answer (second KEY2 hold = capture, anything else = cancel), and the
+  // gesture engines already run with singles undelayed outside settings.
   bool wantsDouble(uint8_t button) const {
     return button == 1 && screen_ == cc::Screen::SETTINGS;
   }
@@ -83,6 +109,7 @@ class UiController {
   cc::Screen screen() const { return screen_; }
   cc::SettingsItem item() const { return item_; }
   bool dimmed() const { return dimmed_; }
+  bool confirmingCapture() const { return confirming_; }
   uint16_t threshold() const { return threshold_; }
   uint8_t venue() const { return venue_; }
   int8_t rssiGate() const { return rssiGate_; }
@@ -98,6 +125,17 @@ class UiController {
   }
 
  private:
+  void expireConfirm() {
+    if (confirming_ && now_ - confirmStart_ >= lim_.confirmTimeoutMs) confirming_ = false;
+  }
+
+  // Back to the count; an unsaved manual count is discarded.
+  void leaveSettings() {
+    screen_ = cc::Screen::COUNT;
+    item_ = cc::SettingsItem::THRESHOLD;
+    manual_ = 0;
+  }
+
   static cc::UiEvent none() { return {cc::UiAction::NONE, 0}; }
 
   cc::UiEvent endPrompt(cc::UiAction a) {
@@ -119,7 +157,10 @@ class UiController {
       return none();
     }
     if (e == GestureEvent::SINGLE) dimmed_ = true;
-    if (e == GestureEvent::HOLD) return {cc::UiAction::START_CAPTURE, 0};
+    if (e == GestureEvent::HOLD) {  // first hold only arms; a second one captures
+      confirming_ = true;
+      confirmStart_ = now_;
+    }
     return none();
   }
 
@@ -186,6 +227,8 @@ class UiController {
   cc::Screen screen_ = cc::Screen::COUNT;
   cc::SettingsItem item_ = cc::SettingsItem::THRESHOLD;
   bool dimmed_ = false;
+  bool confirming_ = false;
+  uint32_t confirmStart_ = 0;
   uint16_t threshold_ = 0;
   uint8_t venue_ = 0;
   int8_t rssiGate_ = 0;

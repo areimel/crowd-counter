@@ -14,12 +14,19 @@ constexpr int EST_Y = 126;                // "est." size 2, y 126..142
 constexpr int NOTICE_Y = 150;             // capture / stale notice, y 150..166
 constexpr int STATUS_Y = 176;             // status bar y 176..204
 constexpr int SMALL_Y = 214;              // "X=120 PK151" size 1, y 214..222
+constexpr int LOGERR_Y = 15;              // "LOG ERR" mark, y 15..23 (clear of top row and digits)
+constexpr int LIST_NOTICE_Y = 206;        // confirm notice under the 6-row DETAIL/SUMMARY lists (end y 198)
 // ---- Settings footer / prompt layout ------------------------------------------
-constexpr int FOOT_Y = 204, FOOT_PITCH = 10;
+constexpr int FOOT_Y = 190, FOOT_PITCH = 10;  // 4 footer lines: y 190..238
 constexpr int CHOICE_X = 4, CHOICE_W = W - 8, CHOICE_H = 46;
 constexpr int CHOICE1_Y = 34, CHOICE2_Y = 88;
 constexpr int COUNTDOWN_Y = 150, METER_Y = 174, METER_H = 10, PROMPT_HINT_Y = 192;
-constexpr int PROMPT_TOTAL_S = 15;
+
+// Two short lines telling the user what a second KEY2 hold will do (<= 90 px wide).
+void confirmNotice(M5Canvas& c, int y) {
+  labelCenter(c, CENTER_X, y, "HOLD K2 AGAIN", ACCENT);
+  labelCenter(c, CENTER_X, y + 10, "TO CAPTURE", ACCENT);
+}
 
 constexpr const char* ITEM_NAMES[cc::SETTINGS_ITEM_COUNT] = {"THRESHOLD", "VENUE", "RSSI GATE",
                                                              "MANUAL", "END NIGHT"};
@@ -64,8 +71,13 @@ void Ui::drawCount(const cc::UiModel& m) {
   bigNumber(c, BIG_Y, m.estimate, digits);
   labelRight(c, RIGHT, EST_Y, "est.", m.flash ? BG : DIM, 2);
 
+  if (m.logError) label(c, MARGIN, LOGERR_Y, "LOG ERR", ALERT);
+
+  // flash is a COUNT-only effect; the other screens ignore it by design.
   if (!m.flash) {
-    if (m.capturing) {
+    if (m.confirmCapture) {
+      confirmNotice(c, NOTICE_Y);
+    } else if (m.capturing) {
       labelCenter(c, CENTER_X, NOTICE_Y, "CAPTURING", ACCENT, 2);
     } else if (m.setupStale) {
       labelCenter(c, CENTER_X, NOTICE_Y, "RE-RUN SETUP", ACCENT);
@@ -90,21 +102,15 @@ void Ui::drawCount(const cc::UiModel& m) {
 
 void Ui::drawDetail(const cc::UiModel& m) {
   M5Canvas& c = canvas_;
-  char buf[16];
   header(c, "DETAIL");
   int y = ROWS_Y;
-  snprintf(buf, sizeof buf, "%u", unsigned(m.bleCount));
-  row(c, y, "BLE", buf), y += ROW_H;
-  snprintf(buf, sizeof buf, "%u", unsigned(m.wifiCount));
-  row(c, y, "WIFI", buf), y += ROW_H;
-  snprintf(buf, sizeof buf, "%u.%02u", unsigned(m.ratioX100 / 100), unsigned(m.ratioX100 % 100));
-  row(c, y, "RATIO", buf), y += ROW_H;
-  snprintf(buf, sizeof buf, "%u", unsigned(m.background));
-  row(c, y, "BKGND", buf), y += ROW_H;
-  snprintf(buf, sizeof buf, "%u", unsigned(m.baseline));
-  row(c, y, "BASE", buf), y += ROW_H;
-  snprintf(buf, sizeof buf, "%d", int(m.rssiGate));
-  row(c, y, "GATE", buf);
+  rowNum(c, y, "BLE", m.bleCount), y += ROW_H;
+  rowNum(c, y, "WIFI", m.wifiCount), y += ROW_H;
+  rowf(c, y, "RATIO", "%u.%02u", unsigned(m.ratioX100 / 100), unsigned(m.ratioX100 % 100)), y += ROW_H;
+  rowNum(c, y, "BKGND", m.background), y += ROW_H;
+  rowNum(c, y, "BASE", m.baseline), y += ROW_H;
+  rowNum(c, y, "GATE", m.rssiGate);
+  if (m.confirmCapture) confirmNotice(c, LIST_NOTICE_Y);
 }
 
 void Ui::drawSummary(const cc::UiModel& m) {
@@ -112,22 +118,19 @@ void Ui::drawSummary(const cc::UiModel& m) {
   char name[16], buf[24];
   header(c, "NIGHT", m.startEpoch ? "UTC" : nullptr);
   int y = ROWS_Y;
-  snprintf(buf, sizeof buf, "%u", unsigned(m.peak));
-  row(c, y, "PEAK", buf), y += ROW_H;
+  rowNum(c, y, "PEAK", m.peak), y += ROW_H;
   snprintf(name, sizeof name, ">=%u", unsigned(m.threshold));
-  snprintf(buf, sizeof buf, "%um", unsigned(m.minutesAbove));
-  row(c, y, name, buf), y += ROW_H;
+  rowf(c, y, name, "%um", unsigned(m.minutesAbove)), y += ROW_H;
   if (m.startEpoch) {
     const uint32_t s = m.startEpoch % 86400u;
-    snprintf(buf, sizeof buf, "%02u:%02u", unsigned(s / 3600), unsigned(s / 60 % 60));
-    row(c, y, "START", buf), y += ROW_H;
+    rowf(c, y, "START", "%02u:%02u", unsigned(s / 3600), unsigned(s / 60 % 60)), y += ROW_H;
   }
-  snprintf(buf, sizeof buf, "%u:%02u", unsigned(m.nightMinutes / 60), unsigned(m.nightMinutes % 60));
-  row(c, y, "NOW", buf), y += ROW_H;
-  snprintf(buf, sizeof buf, "%u", unsigned(m.threshold));
-  row(c, y, "X", buf), y += ROW_H;
+  rowf(c, y, "ELAPSED", "%u:%02u", unsigned(m.nightMinutes / 60), unsigned(m.nightMinutes % 60)),
+      y += ROW_H;
+  rowNum(c, y, "X", m.threshold), y += ROW_H;
   upper(buf, sizeof buf, venueName(m.venue));
   row(c, y, "VENUE", buf);
+  if (m.confirmCapture) confirmNotice(c, LIST_NOTICE_Y);
 }
 
 void Ui::drawSettings(const cc::UiModel& m) {
@@ -135,17 +138,22 @@ void Ui::drawSettings(const cc::UiModel& m) {
   char buf[24];
   header(c, "SETTINGS");
   for (uint8_t i = 0; i < cc::SETTINGS_ITEM_COUNT; ++i) {
+    const int y = ROWS_Y + i * ROW_H;
+    const bool hl = uint8_t(m.item) == i;
     switch (cc::SettingsItem(i)) {
-      case cc::SettingsItem::THRESHOLD: snprintf(buf, sizeof buf, "%u", unsigned(m.threshold)); break;
-      case cc::SettingsItem::VENUE: upper(buf, sizeof buf, venueName(m.venue)); break;
-      case cc::SettingsItem::RSSI_GATE: snprintf(buf, sizeof buf, "%d", int(m.rssiGate)); break;
-      case cc::SettingsItem::MANUAL_COUNT: snprintf(buf, sizeof buf, "%u", unsigned(m.manualCount)); break;
-      case cc::SettingsItem::END_NIGHT: snprintf(buf, sizeof buf, "HOLD"); break;
+      case cc::SettingsItem::THRESHOLD: rowNum(c, y, ITEM_NAMES[i], m.threshold, hl, 1); break;
+      case cc::SettingsItem::VENUE:
+        upper(buf, sizeof buf, venueName(m.venue));
+        row(c, y, ITEM_NAMES[i], buf, hl, 1);
+        break;
+      case cc::SettingsItem::RSSI_GATE: rowNum(c, y, ITEM_NAMES[i], m.rssiGate, hl, 1); break;
+      case cc::SettingsItem::MANUAL_COUNT: rowNum(c, y, ITEM_NAMES[i], m.manualCount, hl, 1); break;
+      case cc::SettingsItem::END_NIGHT: row(c, y, ITEM_NAMES[i], "HOLD", hl, 1); break;
     }
-    row(c, ROWS_Y + i * ROW_H, ITEM_NAMES[i], buf, uint8_t(m.item) == i, 1);
   }
   int y = FOOT_Y;
   label(c, MARGIN, y, "K1 NEXT", DIM), y += FOOT_PITCH;
+  label(c, MARGIN, y, "K1 HOLD EXIT", DIM), y += FOOT_PITCH;
   switch (m.item) {
     case cc::SettingsItem::END_NIGHT: label(c, MARGIN, y, "K2 HOLD = END", DIM); break;
     case cc::SettingsItem::MANUAL_COUNT:
@@ -168,19 +176,24 @@ void Ui::drawPrompt(const cc::UiModel& m) {
   label(c, MARGIN + 2, CHOICE2_Y + 20, "RESUME", INK, 2);
   snprintf(buf, sizeof buf, "NEW IN %us", unsigned(m.promptSeconds));
   labelCenter(c, CENTER_X, COUNTDOWN_Y, buf, INK, 2);
-  meter(c, MARGIN, METER_Y, W - 2 * MARGIN, METER_H, m.promptSeconds, PROMPT_TOTAL_S, ACCENT);
+  meter(c, MARGIN, METER_Y, W - 2 * MARGIN, METER_H, m.promptSeconds,
+        m.promptTotalSeconds, ACCENT);  // total 0: meter draws an empty frame
   labelCenter(c, CENTER_X, PROMPT_HINT_Y, "NO PRESS = NEW", DIM);
 }
+
+static_assert(sizeof(cc::UiModel) == 48, "update sameModel when UiModel changes");
 
 bool sameModel(const cc::UiModel& a, const cc::UiModel& b) {
   return a.screen == b.screen && a.item == b.item && a.dimmed == b.dimmed &&
          a.estimate == b.estimate && a.threshold == b.threshold && a.peak == b.peak &&
          a.state == b.state && a.warmingUp == b.warmingUp && a.capturing == b.capturing &&
+         a.confirmCapture == b.confirmCapture && a.logError == b.logError &&
          a.setupStale == b.setupStale && a.flash == b.flash && a.pulse == b.pulse &&
          a.batteryPct == b.batteryPct && a.charging == b.charging && a.bleCount == b.bleCount &&
          a.wifiCount == b.wifiCount && a.background == b.background && a.baseline == b.baseline &&
          a.ratioX100 == b.ratioX100 && a.rssiGate == b.rssiGate &&
          a.minutesAbove == b.minutesAbove && a.nightMinutes == b.nightMinutes &&
          a.startEpoch == b.startEpoch && a.venue == b.venue && a.manualCount == b.manualCount &&
-         a.promptSeconds == b.promptSeconds;
+         a.promptSeconds == b.promptSeconds &&
+         a.promptTotalSeconds == b.promptTotalSeconds;
 }

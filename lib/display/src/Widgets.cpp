@@ -1,4 +1,5 @@
 #include "Widgets.h"
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -68,6 +69,21 @@ void row(M5Canvas& c, int y, const char* name, const char* value, bool highlight
   // Nothing fits side by side: name on top, value under it (size 1, ~17 chars).
   label(c, MARGIN, y + 3, name, nameColor);
   labelRight(c, RIGHT, y + 15, value, valueColor);
+}
+
+void rowNum(M5Canvas& c, int y, const char* name, long value, bool highlighted, int maxNameSize) {
+  char buf[16];
+  snprintf(buf, sizeof buf, "%ld", value);
+  row(c, y, name, buf, highlighted, maxNameSize);
+}
+
+void rowf(M5Canvas& c, int y, const char* name, const char* fmt, ...) {
+  char buf[24];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(buf, sizeof buf, fmt, ap);
+  va_end(ap);
+  row(c, y, name, buf);
 }
 
 void header(M5Canvas& c, const char* title, const char* right) {

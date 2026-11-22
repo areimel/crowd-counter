@@ -1,41 +1,7 @@
-#include <unity.h>
-#include "UiController.h"
-
-using cc::Screen;
-using cc::SettingsItem;
-using cc::UiAction;
-using G = GestureEvent;
+#include "../support/UiTestSupport.h"
 
 void setUp() {}
 void tearDown() {}
-
-static cc::UiLimits limits() {
-  cc::UiLimits l{};
-  l.thresholdMin = 10; l.thresholdMax = 990; l.thresholdStep = 10;
-  l.gateMin = -100; l.gateMax = -50; l.gateStep = 5;
-  l.venueCount = 2; l.manualStep = 5;
-  l.dimAfterMs = 30000; l.promptTimeoutMs = 15000;
-  return l;
-}
-
-static cc::Settings settings(uint16_t th = 100, uint8_t v = 0, int8_t g = -80) {
-  cc::Settings s{}; s.threshold = th; s.venue = v; s.rssiGate = g; return s;
-}
-
-static cc::UiEvent press(UiController& c, uint8_t b, G ev, uint16_t est = 0, uint32_t t = 0) {
-  return c.onGesture(b, ev, est, t);
-}
-
-static void check(cc::UiEvent e, UiAction a, int32_t v = 0) {
-  TEST_ASSERT_EQUAL((int)a, (int)e.action);
-  TEST_ASSERT_EQUAL_INT32(v, e.value);
-}
-
-static UiController started(bool prompt = false, uint32_t t = 0) {
-  UiController c(limits());
-  c.begin(settings(), prompt, t);
-  return c;
-}
 
 // Move into settings and advance to `item` (KEY1 single from THRESHOLD).
 static void toItem(UiController& c, SettingsItem item, uint16_t est = 0) {
@@ -200,12 +166,16 @@ void test_capture_from_normal_screens_only() {
   UiController c = started();
   for (int i = 0; i < 3; i++) {
     Screen s = c.screen();
+    check(press(c, 1, G::HOLD), UiAction::NONE);  // arms
+    TEST_ASSERT_TRUE(c.confirmingCapture());
     check(press(c, 1, G::HOLD), UiAction::START_CAPTURE);
+    TEST_ASSERT_FALSE(c.confirmingCapture());
     TEST_ASSERT_EQUAL((int)s, (int)c.screen());
     press(c, 0, G::SINGLE);
   }
-  press(c, 0, G::HOLD);  // threshold item: no capture
+  press(c, 0, G::HOLD);  // threshold item: no capture, no arming
   check(press(c, 1, G::HOLD), UiAction::NONE);
+  TEST_ASSERT_FALSE(c.confirmingCapture());
 }
 void test_wake_press_consumed_normal() {
   UiController c = started();
@@ -215,8 +185,9 @@ void test_wake_press_consumed_normal() {
   TEST_ASSERT_FALSE(c.dimmed());
   TEST_ASSERT_EQUAL((int)Screen::COUNT, (int)c.screen());
   press(c, 1, G::SINGLE);
-  check(press(c, 1, G::HOLD), UiAction::NONE);  // no capture on wake press
+  check(press(c, 1, G::HOLD), UiAction::NONE);  // no arming on wake press
   TEST_ASSERT_FALSE(c.dimmed());
+  TEST_ASSERT_FALSE(c.confirmingCapture());
   press(c, 1, G::SINGLE);
   press(c, 1, G::SINGLE);  // wake only: does not re-dim
   TEST_ASSERT_FALSE(c.dimmed());
