@@ -6,9 +6,7 @@
 #include "generated_config.h"
 
 namespace {
-Every blink(500);
 Every heartbeat(5000);
-bool ledOn = false;
 bool last[8] = {};
 }  // namespace
 
@@ -26,7 +24,6 @@ void loop() {
     if (down != last[i]) LOG_I("button %u %s", i, down ? "down" : "up");
     last[i] = down;
   }
-  if (blink.due(now)) board::setStatusLed(ledOn = !ledOn);
   if (heartbeat.due(now)) LOG_I("battery=%d%% charging=%d", board::batteryPercent(), board::charging());
   delay(1);
 }

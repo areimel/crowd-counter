@@ -17,6 +17,12 @@ constexpr uint16_t ACCENT = rgb565(0xff, 0x5b, 0x1a);  // #ff5b1a safety orange
 constexpr uint16_t BLUE = rgb565(0x24, 0x38, 0xe8);    // #2438e8 (use sparingly)
 constexpr uint16_t ALERT = rgb565(0xe0, 0x20, 0x18);   // fatal-error red
 
+// Threshold status colours for the count screen (dark-stage friendly).
+// STATUS_GREEN doubles as the alert-flash background.
+constexpr uint16_t STATUS_GREY = rgb565(0x4a, 0x48, 0x40);   // below 80% of X
+constexpr uint16_t STATUS_AMBER = rgb565(0xe0, 0x9a, 0x10);  // 80-99% of X
+constexpr uint16_t STATUS_GREEN = rgb565(0x16, 0xa3, 0x4a);  // X or more
+
 static_assert(BG == 0x1082, "BG RGB565 conversion");
 static_assert(ACCENT == 0xFAC3, "ACCENT RGB565 conversion");
 }  // namespace Theme
