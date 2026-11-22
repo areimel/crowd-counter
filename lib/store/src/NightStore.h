@@ -11,7 +11,7 @@ namespace cc {
 // until begin() has succeeded.
 class NightStore {
  public:
-  static constexpr size_t LINE_BUF = 256;  // read buffer incl. NUL; longer lines are delivered truncated
+  static constexpr size_t LINE_BUF = 512;  // read buffer incl. NUL; longer lines are delivered truncated
   using LineFn = bool (*)(const char* line, void* ctx);  // return false to stop
 
   bool begin();                                           // mount (format on failure), ensure dir
