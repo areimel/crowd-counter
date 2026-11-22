@@ -15,15 +15,20 @@ and nothing has been built in this copy.
 
 - **Scope:** FR-1..FR-12. Export is CSV over USB serial only (no Wi-Fi AP).
 - **Allowlist:** setup mode captures a *baseline count* subtracted for the
-  night, plus exact matches for fixed-address devices; re-capturable any time
-  (KEY2 long press).
+  night, plus exact matches for fixed-address devices; re-capturable any time.
+  A KEY2 hold shows "HOLD K2 AGAIN TO CAPTURE"; a second hold within 5 s
+  captures, anything else cancels. After a capture the display shows WARMING UP
+  for one smoothing period (60 s) and those samples are excluded from
+  peak, time-above and alert.
 - **Repo:** StickS3 only. Delete macro code, the HID/buttons/Wi-Fi/OTA config
   sections and the three GPIO boards. Keep config generator, packaging, CI and
   the web flasher, rewritten for Crowd Counter.
 - **Threshold alert:** screen flash + chime, on by default, switchable in
   `config.yaml`.
-- **Cold power-on:** if a night is still open, ask "New night / Resume" for
-  15 s; no press = new night. Old nights are always kept.
+- **Cold power-on:** if the open night has a log file, ask "New night / Resume"
+  for 15 s; no press = new night. Starting a new night never deletes the
+  previous one; retention keeps the newest 20 night logs and deletes the oldest
+  beyond that or when free space drops below 64 KB.
 - **Venue types shipped:** Bar / pub, Private event.
 - **Dimming:** auto-dim 30 s after the last press; any press wakes.
 - **Hardware:** StickS3 on `/dev/ttyACM0` (303a:1001), flashing authorised.
@@ -97,8 +102,32 @@ Wi-Fi cb ───┴► Observation queue (1024, drops counted) ─► DeviceTa
 
 ### Other calls I made (correct any of these)
 
-- Ids are 64-bit; serial output never prints ids or addresses. NimBLE is built
-  observer-only, and Wi-Fi is started in null mode, so nothing transmits.
+- Ids are 64-bit; serial output never prints ids or addresses. The firmware
+  only ever calls passive-scan and promiscuous-receive APIs (passive NimBLE
+  scan; Wi-Fi in null mode). The prebuilt Arduino sdkconfig compiles all BLE
+  roles in and the role-disable flags have no effect, so the transmit-capable
+  stack is linked but never invoked; `scripts/check_receive_only.py` in CI
+  forbids those APIs in `src/` and `lib/`.
+- Privacy wording: raw addresses are never stored *by the application*. The
+  radio drivers hold a received frame in RAM before our callback hashes it; no
+  application-owned copy outlives the callback and nothing reaches flash,
+  serial or a log. The salt is held only in RAM (RTC memory plus working
+  copies), never written to flash or printed, and is regenerated at every cold
+  power-on, every End night and once a night has run 18 hours. Ids are salted
+  pseudonyms: while powered, salt and ids are in RAM together, so physical
+  debug access to a running device could recover addresses by enumeration.
+  Nothing persisted or emitted identifies a device.
+- Alert: when it fires the device switches to the count screen, wakes the
+  display, flashes and chimes. Confirmation beeps (setup captured, manual
+  count saved) and the error tone (manual count rejected during warm-up)
+  follow `alert.chime`.
+- Count screen: the status bar always shows ABOVE n / BELOW n / WARMING UP; the
+  small line reads like `X=120 PK151`; a log write failure shows LOG ERR.
+  Summary: peak, minutes at or above X, start time (UTC, only when the clock
+  is known), elapsed, X and venue; the end time is available from the serial
+  `summary` command. Settings return to the count screen after 60 s idle.
+- `export` / `summary` with no argument use the current night once it has a log
+  (after its first minute); before that: `ERR current night has no log yet`.
 - Device class is coarse (phone, wearable, audio, tracker, computer, other)
   with weights in `config.yaml`. Samsung and several Apple markers are
   ambiguous; those fall to "other".
@@ -111,8 +140,9 @@ Wi-Fi cb ───┴► Observation queue (1024, drops counted) ─► DeviceTa
 - Serial CLI: `help status nights export [n] summary time <epoch> shot`.
   `shot` dumps the screen so the host makes a PNG; this is how the UI is
   checked in-session.
-- Night files on LittleFS, one per night, last 20 kept, written
-  open-append-close once a minute.
+- Night files on LittleFS, one per night, newest 20 kept (oldest deleted beyond
+  that or when free space drops below 64 KB), written open-append-close once
+  a minute.
 
 ### Screens (portrait 135×240, dark)
 
@@ -169,9 +199,8 @@ Device-side:
 Build side: `scripts/config/sections/counter.py` (window, gate, smoothing, peak
 hold, table size, threshold default/step, class weights, blend, channels, slice
 lengths, background, venue types, alert, dim level/timeout); remove `ble`,
-`wifi`, `ota`, `buttons`, `keys`; move `button_count` into `config/boards.py`;
-`boards.yaml` and `platformio.ini` reduced to `sticks3` + `native`, with
-observer-only NimBLE flags and `partitions.csv`; packaging (no Improv wait,
+`wifi`, `ota`, `buttons`, `keys`; `boards.yaml` and `platformio.ini` reduced to `sticks3` + `native`, with
+`partitions.csv`; packaging (no Improv wait,
 `firmware_images.py` checked against the new table), CI, release title,
 `web/src/content/site.ts`, `README.md`, `AGENTS.md`, `TODO.md` rewritten.
 

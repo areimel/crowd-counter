@@ -6,10 +6,11 @@
 - Scope: a small, dependable passive crowd counter covering PRD FR-1..FR-12 (`docs/PRD.md`; design: `docs/superpowers/specs/2026-11-22-crowd-counter-design.md`). Export is CSV over USB serial only.
 - Do not add network services, a Wi-Fi access point, OTA, a companion app or a runtime configuration system without a request.
 - Privacy invariants are non-negotiable:
-  - Receive only. NimBLE is built observer-only and Wi-Fi starts in null mode (promiscuous RX). Never connect to, probe, ping or deauth any device.
-  - A device address exists only on a radio callback's stack and is hashed there: id = first 8 bytes of SHA-256(salt || signal || address).
-  - Never store, write to flash, print, log or send a raw address or id, including over serial.
-  - The per-night salt and the allowlist live only in RTC memory. They survive a crash or soft reset and are lost at power-off.
+  - Receive only. Call only passive-scan and promiscuous-receive APIs (passive NimBLE scan; Wi-Fi in null mode, promiscuous RX). Never connect to, probe, ping or deauth any device. Do not describe NimBLE as "built observer-only": the prebuilt Arduino sdkconfig compiles every BLE role in and the role-disable flags do nothing, so the transmit-capable stack is linked but must never be invoked. `scripts/check_receive_only.py` (run in CI and release) fails on forbidden APIs in `src/` and `lib/` (advertising, client/server, active scan, `esp_wifi_scan_start`/`connect`/`80211_tx`, ESP-NOW, `ble_gap_connect`/`adv_`, Arduino `WiFi`, `WiFiClient`, `HTTPClient`); keep it passing and extend its list rather than bypassing it.
+  - A device address is hashed inside the radio callback: id = first 8 bytes of SHA-256(salt || signal || address). The application never keeps a raw address, but the radio drivers necessarily hold the received frame in RAM before the callback runs, so say "never stored by the application", not "never in memory". No application-owned copy may outlive the callback.
+  - Never write to flash, print, log or send a raw address or id, including over serial.
+  - The salt and the allowlist are held only in RAM (RTC memory plus working copies), never written to flash or printed. They survive a crash or soft reset and are lost at power-off. The salt is regenerated at every cold power-on and every End night, and automatically once a night has run 18 hours.
+  - Ids are salted pseudonyms, not anonymous while powered: salt and ids are in RAM together, so someone with physical debug access to a running device could recover addresses by enumeration. Nothing persisted or emitted identifies a device. State this plainly; do not overclaim.
   - No core dumps. `partitions.csv` has no coredump partition; do not add one or enable core dump to flash.
   - Night logs hold aggregate counts only.
   - `config.yaml` never holds secrets: it is published with the firmware.
@@ -28,8 +29,10 @@
   - Baseline (rotating-address weighted count) and allowlist (fixed-address ids) are disjoint, so nothing is subtracted twice.
   - Background removal stays narrow: fixed-address, non-phone BLE devices only.
   - Night state survives a crash reset but not power-off.
-  - A cold boot with an open night shows "New night / Resume"; no press within 15 s means a new night.
-  - Old nights are always kept (last 20).
+  - A cold boot shows "New night / Resume" only when the open night has a log file; no press within 15 s means a new night.
+  - Retention: the newest 20 night logs are kept; the oldest are deleted beyond that or when free space drops below 64 KB. Starting a new night never deletes the previous one.
+  - Setup capture needs confirmation: a KEY2 hold shows "HOLD K2 AGAIN TO CAPTURE"; a second hold within 5 s captures, anything else cancels. Samples for 60 s after a capture are warm-up.
+  - Manual count during warm-up is rejected. Confirmation beeps and the error tone follow `alert.chime`.
   - Chime volume is capped to avoid a brownout.
 - Code rules:
   - Reuse before writing: `Every`, `Log`, `Gesture`, `Theme`, the config helpers (`fields`, `integer`, `boolean`, `cstr`), existing web components and CSS tokens.
@@ -70,6 +73,7 @@ Module map (from the design doc):
 - Create a Python 3.12 venv (pioarduino rejects newer Pythons such as 3.15) and install requirements: `python3.12 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`. On Windows use `.venv\Scripts\pio` and `.venv\Scripts\python`.
 - Firmware: `.venv/bin/pio run -e sticks3`.
 - Host C++ tests: `.venv/bin/pio test -e native` (Unity tests of pure libraries in `lib/counter`, `lib/input`, `lib/app` and `test/`).
+- Receive-only guard: `python scripts/check_receive_only.py` (stdlib only; also run in CI).
 - Python tests: `.venv/bin/python -m unittest discover -s scripts/tests -v`. Run them after a firmware build, because packaging tests use PlatformIO's esptool.
 - Package: `.venv/bin/python scripts/package_firmware.py --output web/public/firmware`.
 - Web: in `web/`, run `npm ci && npm run check && npm test && npm run build`.
