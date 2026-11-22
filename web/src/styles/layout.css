@@ -68,7 +68,6 @@ main {
   color: var(--dim);
 }
 
-.board-grid,
 .feature-grid {
   display: grid;
   gap: var(--space-4);

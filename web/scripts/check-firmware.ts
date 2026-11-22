@@ -26,7 +26,7 @@ try {
         count++;
       }
     console.log(
-      `Firmware package verified: ${index.version} (${index.boards.length} boards, ${count} parts)`,
+      `Firmware package verified: ${index.version} (${index.boards.length} board(s), ${count} parts)`,
     );
   }
 } catch (error) {

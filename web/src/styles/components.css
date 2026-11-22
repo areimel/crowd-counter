@@ -1,10 +1,6 @@
-/* Components: panel, board-card, kv, btn, note, disclosure. */
-.muted,
-.board-meta {
+/* Components: panel, kv, btn, note, disclosure. */
+.muted {
   color: var(--dim);
-}
-.board-meta {
-  font-size: var(--text-sm);
 }
 .note {
   margin-top: var(--space-4);
@@ -14,8 +10,7 @@
   font-size: var(--text-sm);
 }
 
-.panel,
-.board-card {
+.panel {
   display: grid;
   align-content: start;
   gap: var(--space-3);
@@ -36,9 +31,6 @@
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: var(--track-wide);
-}
-.board-card .btn {
-  justify-self: start;
 }
 
 .kv {

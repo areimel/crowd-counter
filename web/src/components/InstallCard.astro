@@ -1,6 +1,6 @@
 ---
-/* Classes: panel, panel-head, panel-tag, kv, kv-label, kv-value, board-meta, btn, btn-primary, note, muted */
-import { boardSummary, withBase, type Board } from "../lib/project";
+/* Classes: panel, panel-head, panel-tag, kv, kv-label, kv-value, btn, btn-primary, note, muted */
+import { withBase, type Board } from "../lib/project";
 import Panel from "./Panel.astro";
 import KeyValue from "./KeyValue.astro";
 interface Props {
@@ -14,7 +14,6 @@ const manifest = withBase(`firmware/${board.manifest}`);
 
 <div data-install-for={board.id} hidden={hidden}>
   <Panel tag="Install" title={board.label}>
-    <p class="board-meta">{boardSummary(board)}</p>
     <KeyValue
       items={[
         { label: "Version", value: version },
@@ -33,7 +32,7 @@ const manifest = withBase(`firmware/${board.manifest}`);
       </p>
     </esp-web-install-button>
     <p class="muted">
-      Settings kept on the device survive a reflash unless you choose to erase.
+      Settings and night logs on the device survive a reflash unless you choose to erase. Export your nights first if you erase.
     </p>
   </Panel>
 </div>
