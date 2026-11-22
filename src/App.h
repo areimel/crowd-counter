@@ -1,4 +1,5 @@
 #pragma once
+#include "Board.h"
 #include "Config.h"
 #include "CounterTypes.h"
 #include "DeviceTable.h"
@@ -18,7 +19,7 @@ struct App {
   cc::NightStore nights;
   Ui ui;
   UiController controller{config::uiLimits()};
-  Gesture keys[2] = {{AppConfig::DEBOUNCE_MS, AppConfig::DOUBLE_CLICK_MS, AppConfig::LONG_PRESS_MS},
+  Gesture keys[board::BUTTON_COUNT] = {{AppConfig::DEBOUNCE_MS, AppConfig::DOUBLE_CLICK_MS, AppConfig::LONG_PRESS_MS},
                      {AppConfig::DEBOUNCE_MS, AppConfig::DOUBLE_CLICK_MS, AppConfig::LONG_PRESS_MS}};
   cc::DeviceTable* table = nullptr;  // slots live in PSRAM
   cc::Estimator estimator{config::estimator()};
@@ -35,6 +36,7 @@ struct App {
   bool fileCreated = false;     // the night file is created with its first row
   bool setupStale = false;      // cold resume lost the allowlist
   bool capturePending = false;  // setup capture waiting for a full window
+  bool logError = false;        // the last night-log write failed
   uint32_t warmUntilS = 0;      // window still filling before this
   uint32_t nightBaseS = 0;      // boot time when the night (re)started this boot
   uint32_t baseElapsedS = 0;    // night time accumulated before that
@@ -58,6 +60,7 @@ void tick(uint32_t nowS);  // minute rows and the RTC mirror; call after each es
 uint32_t elapsedS(uint32_t nowS);
 void logMethod(uint32_t nowS);  // call after venue, gate, baseline or ratio changes
 void logManualCount(uint32_t nowS, uint16_t truth);
+void logAlert(uint32_t nowS);
 cc::NightSummary summarize(uint32_t nightId);
 }  // namespace night
 

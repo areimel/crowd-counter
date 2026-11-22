@@ -23,7 +23,24 @@ int8_t batteryPct = -1;
 uint8_t pulse = 0;
 uint32_t lastRadioTotal = 0, flashUntilMs = 0, captureNoteUntilMs = 0;
 
-void beep() { board::tone(config::BEEP_HZ, config::BEEP_MS, AppConfig::ALERT_VOLUME); }
+// Every sound follows alert.chime, so `chime: false` makes the device silent.
+void tone(uint16_t hz, uint16_t ms) {
+  if (AppConfig::ALERT_CHIME) board::tone(hz, ms, AppConfig::ALERT_VOLUME);
+}
+void beep() { tone(config::BEEP_HZ, config::BEEP_MS); }
+
+cc::RawCounts census(uint32_t nowS) {
+  return cc::takeCensus(*app.table, app.night.allowlist, config::census(app.settings.rssiGate), nowS);
+}
+
+// Stored settings can predate a config.yaml change: pull them back in range.
+cc::Settings sanitized(cc::Settings s) {
+  const cc::UiLimits l = config::uiLimits();
+  if (s.venue >= l.venueCount) s.venue = 0;
+  if (s.threshold < l.thresholdMin || s.threshold > l.thresholdMax) s.threshold = AppConfig::THRESHOLD_DEFAULT;
+  if (s.rssiGate < l.gateMin || s.rssiGate > l.gateMax) s.rssiGate = AppConfig::RSSI_GATE_DBM;
+  return s;
+}
 
 void loadVenue() {
   app.cal = {};
@@ -37,7 +54,12 @@ void capture(uint32_t nowS, uint32_t nowMs) {
   app.meta.baseline = app.night.baseline;
   app.store.saveNightMeta(app.meta);
   app.setupStale = app.capturePending = false;
-  captureNoteUntilMs = nowMs + 2000;
+  captureNoteUntilMs = nowMs + config::CAPTURE_NOTE_MS;
+  // The method just changed: recount under it, and keep the mixed samples out
+  // of peak, time-above and the alert while the smoothing refills.
+  app.counts = census(nowS);
+  const uint32_t settled = nowS + AppConfig::SMOOTHING_S;
+  if (settled > app.warmUntilS) app.warmUntilS = settled;
   night::logMethod(nowS);
   beep();
   LOG_I("setup captured: baseline ble=%.1f wifi=%.1f, %u fixed devices allowlisted",
@@ -45,7 +67,11 @@ void capture(uint32_t nowS, uint32_t nowMs) {
 }
 
 void saveManualCount(uint32_t nowS, uint16_t truth) {
-  if (!app.nightActive || app.snap.warmingUp || truth == 0) return;  // no usable signal yet
+  if (!app.nightActive || app.snap.warmingUp || truth == 0) {  // no usable signal yet
+    tone(config::ERROR_HZ, config::ERROR_MS);
+    LOG_W("manual count rejected: warming up or zero");
+    return;
+  }
   cc::addPair(app.cal, {app.snap.bleSignal, app.snap.wifiSignal, truth});
   app.store.saveCal(app.settings.venue, app.cal);
   app.ratios = cc::fitRatios(app.cal, config::defaultRatios(app.settings.venue));
@@ -69,6 +95,7 @@ void handle(cc::UiEvent ev, uint32_t nowS, uint32_t nowMs) {
     case cc::UiAction::SET_RSSI_GATE:
       app.settings.rssiGate = int8_t(ev.value);
       app.store.saveSettings(app.settings);
+      if (app.night.baseline.valid) app.setupStale = true;  // baseline was measured under the old gate
       night::logMethod(nowS);
       break;
     case cc::UiAction::SAVE_MANUAL_COUNT: saveManualCount(nowS, uint16_t(ev.value)); break;
@@ -89,17 +116,23 @@ void handle(cc::UiEvent ev, uint32_t nowS, uint32_t nowMs) {
 
 void estimate(uint32_t nowS, uint32_t nowMs) {
   app.table->expire(nowS, AppConfig::WINDOW_S);
-  app.counts = cc::takeCensus(*app.table, app.night.allowlist,
-                              config::census(app.settings.rssiGate), nowS);
+  app.counts = census(nowS);
   if (!app.nightActive) return;
+  if (night::elapsedS(nowS) >= config::NIGHT_MAX_S) {  // never keep one salt longer than this
+    LOG_I("night reached its maximum length: rotating");
+    night::end(nowS);
+    night::startNew(nowS, true);
+    return;
+  }
   const bool warm = warmingUp(nowS);
   if (app.capturePending && !warm) capture(nowS, nowMs);
   app.snap = app.estimator.update(app.counts, app.night.baseline, app.ratios,
                                   app.settings.threshold, warm);
   if (app.snap.alertNow) {
     if (AppConfig::ALERT_FLASH) flashUntilMs = nowMs + config::ALERT_FLASH_MS;
-    if (AppConfig::ALERT_CHIME) board::tone(config::CHIME_HZ, config::CHIME_MS, AppConfig::ALERT_VOLUME);
-    app.controller.wake(nowMs);
+    tone(config::CHIME_HZ, config::CHIME_MS);
+    app.controller.showCount(nowMs);  // the flash is drawn on the count screen
+    night::logAlert(nowS);
     LOG_I("threshold %u crossed", app.settings.threshold);
   }
   night::tick(nowS);
@@ -117,6 +150,8 @@ cc::UiModel buildModel(uint32_t nowS, uint32_t nowMs) {
   m.state = app.snap.state;
   m.warmingUp = warmingUp(nowS);
   m.capturing = app.capturePending || nowMs < captureNoteUntilMs;
+  m.confirmCapture = c.confirmingCapture();
+  m.logError = app.logError;
   m.setupStale = app.setupStale;
   m.flash = nowMs < flashUntilMs && (nowMs / 250) % 2 == 0;
   m.pulse = pulse;
@@ -134,6 +169,7 @@ cc::UiModel buildModel(uint32_t nowS, uint32_t nowMs) {
   m.venue = c.venue();
   m.manualCount = c.manualCount();
   m.promptSeconds = c.promptSeconds();
+  m.promptTotalSeconds = uint8_t(config::PROMPT_TIMEOUT_MS / 1000);
   return m;
 }
 
@@ -164,16 +200,26 @@ void setup() {
   for (uint8_t i = 0; i < AppConfig::VENUE_COUNT; ++i) venueNames[i] = AppConfig::VENUES[i].name;
   if (!app.ui.begin(board::display(), venueNames, AppConfig::VENUE_COUNT)) LOG_E("no sprite memory");
 
-  app.store.begin();
-  app.settings = app.store.loadSettings(config::defaultSettings());
-  if (app.settings.venue >= AppConfig::VENUE_COUNT) app.settings.venue = 0;
+  if (!app.store.begin()) LOG_E("settings store unavailable: using defaults");
+  app.settings = sanitized(app.store.loadSettings(config::defaultSettings()));
   app.meta = app.store.loadNightMeta();
   loadVenue();
-  app.nights.begin();
+  if (!app.nights.begin()) {
+    LOG_E("night store unavailable: nothing will be logged");
+    app.logError = true;
+  }
 
   auto* slots = static_cast<cc::DeviceEntry*>(ps_calloc(config::TABLE_SLOTS, sizeof(cc::DeviceEntry)));
-  if (!slots) LOG_E("no PSRAM for the device table");
-  static cc::DeviceTable table(slots, slots ? config::TABLE_SLOTS : 0, AppConfig::TABLE_CAPACITY);
+  uint32_t slotCount = config::TABLE_SLOTS, capacity = AppConfig::TABLE_CAPACITY;
+  if (!slots) {  // keep counting, badly, rather than crash-loop
+    LOG_E("no PSRAM for the device table: falling back to %lu slots",
+          static_cast<unsigned long>(config::FALLBACK_SLOTS));
+    static cc::DeviceEntry fallback[config::FALLBACK_SLOTS];
+    slots = fallback;
+    slotCount = config::FALLBACK_SLOTS;
+    capacity = config::FALLBACK_SLOTS * 5 / 8;
+  }
+  static cc::DeviceTable table(slots, slotCount, capacity);
   app.table = &table;
 
   if (!app.radio.begin(config::radio())) LOG_E("radio failed to start");
@@ -189,6 +235,8 @@ void setup() {
     if (!prompt) night::startNew(nowS, false);
   }
   app.controller.begin(app.settings, prompt, millis());
+  // A button held through boot must be released before it can mean anything.
+  for (uint8_t i = 0; i < board::BUTTON_COUNT; ++i) app.keys[i].reset(board::isPressed(i), millis());
 }
 
 void loop() {
@@ -197,16 +245,22 @@ void loop() {
   const uint32_t nowS = nowSeconds();
 
   cc::Observation o;
-  for (int i = 0; i < 512 && app.radio.poll(o); ++i) app.table->observe(o, nowS);
+  for (int i = 0; i < config::DRAIN_PER_LOOP && app.radio.poll(o); ++i) app.table->observe(o, nowS);
 
-  for (uint8_t i = 0; i < 2; ++i) {
+  const cc::Screen before = app.controller.screen();
+  for (uint8_t i = 0; i < board::BUTTON_COUNT; ++i) {
     const GestureEvent e = app.keys[i].update(board::isPressed(i), nowMs);
     if (e != GestureEvent::NONE)
       handle(app.controller.onGesture(i, e, app.snap.smoothed, nowMs), nowS, nowMs);
   }
   handle(app.controller.tick(nowMs), nowS, nowMs);
-  for (uint8_t i = 0; i < 2; ++i)
+  // The buttons mean something else on a new screen: a press that is still
+  // down (e.g. when the prompt times out) must not carry over.
+  const bool screenChanged = app.controller.screen() != before;
+  for (uint8_t i = 0; i < board::BUTTON_COUNT; ++i) {
+    if (screenChanged) app.keys[i].cancel();
     app.keys[i].setAssigned(app.controller.wantsDouble(i), app.controller.wantsHold(i));
+  }
 
   if (recompute.due(nowMs)) estimate(nowS, nowMs);
   if (second.due(nowMs)) everySecond();

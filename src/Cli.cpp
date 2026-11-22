@@ -11,12 +11,22 @@
 namespace {
 cc::LineAccumulator<64> input;
 
-// The night a command refers to: its argument, else the current night if it has
-// a file yet, else the newest file. 0 when there is none.
+// The night a command refers to: its argument, else the current night. Prints
+// the reason and returns 0 when there is nothing to show.
 uint32_t resolveNight(const cc::CliRequest& r) {
-  if (r.hasArg) return app.nights.exists(r.arg) ? r.arg : 0;
-  if (app.nightActive && app.fileCreated) return app.night.nightId;
-  return app.nights.newestId();
+  if (r.hasArg) {
+    if (app.nights.exists(r.arg)) return r.arg;
+    Serial.println("ERR no such night");
+    return 0;
+  }
+  if (app.nightActive) {
+    if (app.fileCreated) return app.night.nightId;
+    Serial.println("ERR current night has no log yet");
+    return 0;
+  }
+  const uint32_t newest = app.nights.newestId();
+  if (newest == 0) Serial.println("ERR no nights stored");
+  return newest;
 }
 
 void printSummary(uint32_t id) {
@@ -33,10 +43,10 @@ void status(uint32_t nowS) {
   Serial.printf("%s %s uptime_s=%lu reset=%s epoch=%lu\n", AppConfig::PROJECT_NAME, FIRMWARE_VERSION,
                 static_cast<unsigned long>(nowS), cc::rtc::resetReasonName(),
                 static_cast<unsigned long>(epochNow(nowS)));
-  Serial.printf("night=%lu active=%d minute=%lu file=%d warming_up=%d setup_stale=%d\n",
+  Serial.printf("night=%lu active=%d minute=%lu file=%d log_error=%d warming_up=%d setup_stale=%d\n",
                 static_cast<unsigned long>(app.night.nightId), app.nightActive,
                 static_cast<unsigned long>(app.nightActive ? night::elapsedS(nowS) / 60 : 0),
-                app.fileCreated, warmingUp(nowS), app.setupStale);
+                app.fileCreated, app.logError, warmingUp(nowS), app.setupStale);
   Serial.printf("estimate=%u smoothed=%u peak=%u minutes_above=%u threshold=%u venue=\"%s\"\n",
                 app.snap.instant, app.snap.smoothed, app.snap.peak, app.snap.minutesAbove,
                 app.settings.threshold, config::venueName(app.settings.venue));
@@ -65,10 +75,7 @@ void status(uint32_t nowS) {
 }
 
 void exportNight(uint32_t id) {
-  if (id == 0) {
-    Serial.println("ERR no such night");
-    return;
-  }
+  if (id == 0) return;
   Serial.printf("BEGIN night=%lu\n", static_cast<unsigned long>(id));
   app.nights.forEachLine(id, [](const char* line) {
     Serial.println(line);
@@ -98,7 +105,9 @@ void shot() {
 void setTime(uint32_t epoch, uint32_t nowS) {
   const bool rtc = board::setRtcEpoch(epoch);
   app.epochOffset = epoch - nowS;
-  if (app.nightActive && app.night.startEpoch == 0) {
+  // Only a night that began this boot has a known start: elapsed time after a
+  // cold resume includes earlier sessions.
+  if (app.nightActive && app.night.startEpoch == 0 && app.baseElapsedS == 0) {
     app.night.startEpoch = epoch - night::elapsedS(nowS);
     app.meta.startEpoch = app.night.startEpoch;
     app.store.saveNightMeta(app.meta);
@@ -123,7 +132,6 @@ void run(const cc::CliRequest& r, uint32_t nowS) {
     case cc::CliCommand::SUMMARY: {
       const uint32_t id = resolveNight(r);
       if (id) printSummary(id);
-      else Serial.println("ERR no such night");
       break;
     }
     case cc::CliCommand::TIME: setTime(r.arg, nowS); break;

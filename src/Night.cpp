@@ -8,6 +8,7 @@
 #include "Log.h"
 #include "NightLogFormat.h"
 #include "RtcState.h"
+#include "SecureZero.h"
 
 namespace {
 
@@ -19,7 +20,7 @@ cc::NightMethod method() {
   m.blend = AppConfig::BLEND_BLE;
   m.windowS = AppConfig::WINDOW_S;
   m.rssiGate = app.settings.rssiGate;
-  m.weights = config::census(0).weights;
+  m.weights = config::classWeights();
   return m;
 }
 
@@ -30,9 +31,9 @@ bool ensureFile() {
   size_t n = cc::formatTitle(header, sizeof header, app.night.nightId, FIRMWARE_VERSION);
   n += cc::formatMethod(header + n, sizeof header - n, method());
   n += cc::formatColumns(header + n, sizeof header - n);
-  if (n > 0 && header[n - 1] == '\n') header[n - 1] = 0;  // the store adds the final newline
   if (!app.nights.create(app.night.nightId, header)) {
     LOG_E("night %lu: cannot create log", static_cast<unsigned long>(app.night.nightId));
+    app.logError = true;
     return false;
   }
   app.fileCreated = true;
@@ -40,11 +41,10 @@ bool ensureFile() {
   return true;
 }
 
-void appendLine(char* line) {
-  size_t n = strlen(line);
-  if (n == 0) return;  // the formatter refused: line did not fit
-  if (line[n - 1] == '\n') line[n - 1] = 0;
-  if (!app.nights.append(app.night.nightId, line)) LOG_E("night log append failed");
+void appendLine(const char* line) {
+  if (line[0] == 0) return;  // the formatter refused: line did not fit
+  app.logError = !app.nights.append(app.night.nightId, line);
+  if (app.logError) LOG_E("night log append failed");
 }
 
 void writeRow(uint32_t nowS) {
@@ -65,10 +65,14 @@ void writeRow(uint32_t nowS) {
   r.threshold = app.settings.threshold;
   const int mv = board::batteryMv();
   r.batteryMv = mv > 0 ? uint16_t(mv) : 0;
-  r.flags = app.snap.warmingUp ? cc::rowflag::WARMUP : 0;
+  r.flags = (app.snap.warmingUp ? cc::rowflag::WARMUP : 0) |
+            (app.estimator.state().alertLatched ? cc::rowflag::ALERT : 0);
   char line[256];
   cc::formatRow(line, sizeof line, r);
   appendLine(line);
+  // Long nights must not run the filesystem out of space unnoticed.
+  if (app.lastMinute % config::PRUNE_EVERY_MIN == 0)
+    app.nights.prune(config::NIGHTS_KEPT, config::MIN_FREE_BYTES, app.night.nightId);
 }
 
 void mirrorToRtc(uint32_t nowS) {
@@ -98,11 +102,17 @@ void startNew(uint32_t nowS, bool freshSalt) {
   app.night = {};
   memcpy(app.night.salt, salt, sizeof salt);
   if (freshSalt) {
-    // Ids from the old salt are meaningless now: start the window again.
+    // Ids from the old salt are meaningless now: drop any still queued and
+    // start the window again.
     app.radio.setSalt(app.night.salt);
+    app.radio.flush();
     app.table->clear();
     app.warmUntilS = nowS + AppConfig::WINDOW_S;
   }
+  cc::secureZero(salt, sizeof salt);
+  // Never reuse the id of a log that is still on the filesystem (NVS can be
+  // reset while the files survive).
+  while (app.nights.exists(app.meta.nextNightId)) ++app.meta.nextNightId;
   app.night.nightId = app.meta.nextNightId++;
   app.night.startEpoch = epochNow(nowS);
   app.meta.openNightId = app.night.nightId;
@@ -113,6 +123,7 @@ void startNew(uint32_t nowS, bool freshSalt) {
   app.snap = {};
   app.fileCreated = false;
   app.setupStale = false;
+  app.logError = false;
   activate(nowS, 0);
   mirrorToRtc(nowS);
   LOG_I("night %lu started", static_cast<unsigned long>(app.night.nightId));
@@ -120,9 +131,10 @@ void startNew(uint32_t nowS, bool freshSalt) {
 
 bool resumeWarm(uint32_t nowS) {
   cc::NightState saved;
-  if (!cc::rtc::load(saved) || saved.nightId == 0 || saved.nightId != app.meta.openNightId)
-    return false;
-  app.night = saved;
+  const bool usable = cc::rtc::load(saved) && saved.nightId != 0 && saved.nightId == app.meta.openNightId;
+  if (usable) app.night = saved;
+  cc::secureZero(&saved, sizeof saved);  // it held the salt
+  if (!usable) return false;
   app.radio.setSalt(app.night.salt);
   app.estimator.restore(app.night.estimator);
   app.fileCreated = app.nights.exists(app.night.nightId);
@@ -144,11 +156,11 @@ void resumeCold(uint32_t nowS) {
   app.night.startEpoch = app.meta.startEpoch;
   app.night.baseline = app.meta.baseline;
   app.night.allowlist = {};
-  app.night.estimator = {s.peak, uint32_t(s.minutesAbove) * 60, s.minutesAbove > 0};
+  app.night.estimator = {s.peak, uint32_t(s.minutesAbove) * 60, s.alertFired};
   app.estimator.restore(app.night.estimator);
   app.fileCreated = true;
   app.setupStale = app.night.baseline.valid;  // fixed-address allowlist is gone
-  activate(nowS, uint32_t(s.minutes) * 60);
+  activate(nowS, uint32_t(s.lastMinute) * 60);  // rows can be missing: continue from the last number
   char line[64];
   cc::formatResumeEvent(line, sizeof line, uint16_t(app.lastMinute));
   appendLine(line);
@@ -169,11 +181,11 @@ void end(uint32_t nowS) {
 void tick(uint32_t nowS) {
   if (!app.nightActive) return;
   const uint32_t minute = elapsedS(nowS) / 60;
-  if (minute > app.lastMinute) {
-    app.lastMinute = minute;
-    writeRow(nowS);
-  }
+  // Mirror first: a crash between the two must not repeat the minute.
+  const bool newMinute = minute > app.lastMinute;
+  if (newMinute) app.lastMinute = minute;
   mirrorToRtc(nowS);
+  if (newMinute) writeRow(nowS);
 }
 
 void logMethod(uint32_t nowS) {
@@ -190,6 +202,13 @@ void logManualCount(uint32_t nowS, uint16_t truth) {
   char line[128];
   cc::formatManualCountEvent(line, sizeof line, uint16_t(elapsedS(nowS) / 60), truth,
                              app.snap.bleSignal, app.snap.wifiSignal);
+  appendLine(line);
+}
+
+void logAlert(uint32_t nowS) {
+  if (!app.nightActive || !ensureFile()) return;
+  char line[64];
+  cc::formatAlertEvent(line, sizeof line, uint16_t(elapsedS(nowS) / 60), app.settings.threshold);
   appendLine(line);
 }
 
