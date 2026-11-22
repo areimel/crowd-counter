@@ -1,0 +1,49 @@
+---
+/* Classes: note, section, section-title (plus those of the components it composes) */
+import SiteLayout from "../layouts/SiteLayout.astro";
+import Hero from "../components/Hero.astro";
+import BoardPicker from "../components/BoardPicker.astro";
+import InstallCard from "../components/InstallCard.astro";
+import Steps from "../components/Steps.astro";
+import FeatureGrid from "../components/FeatureGrid.astro";
+import Downloads from "../components/Downloads.astro";
+import Troubleshooting from "../components/Troubleshooting.astro";
+import { site } from "../content/site";
+import { readIndex } from "../lib/project";
+
+const index = readIndex();
+const project = index?.project ?? site.project;
+---
+
+<SiteLayout name={project.name} description={project.description}>
+  <Hero {...project} version={index?.version} />
+  <p class="note">{site.otaNote}</p>
+  {
+    index ? (
+      <>
+        {index.boards.length > 1 ? (
+          <>
+            <BoardPicker boards={index.boards} />
+            {index.boards.map((board, i) => (
+              <InstallCard board={board} version={index.version} hidden={i !== 0} />
+            ))}
+          </>
+        ) : (
+          <section class="section" id="install">
+            <h2 class="section-title">Install</h2>
+            <InstallCard board={index.boards[0]} version={index.version} />
+          </section>
+        )}
+        <Steps steps={site.steps} />
+        <FeatureGrid features={site.features} />
+        <Downloads index={index} />
+      </>
+    ) : (
+      <>
+        <p class="note">{site.noRelease}</p>
+        <FeatureGrid features={site.features} />
+      </>
+    )
+  }
+  <Troubleshooting faq={site.faq} />
+</SiteLayout>

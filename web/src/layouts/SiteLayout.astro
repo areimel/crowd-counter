@@ -1,0 +1,38 @@
+---
+/* Classes: shell, site-header, site-footer, skip-link */
+import { site } from "../content/site";
+import { withBase } from "../lib/project";
+import "../styles/index.css";
+interface Props {
+  name: string;
+  description: string;
+}
+const { name, description } = Astro.props;
+const home = withBase("");
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#141310" />
+    <title>{name}</title>
+    <link rel="icon" type="image/svg+xml" href={withBase("favicon.svg")} />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="shell">
+      <header class="site-header">
+        <a href={home}>{name}</a>
+        {site.repository && <a href={site.repository}>Source</a>}
+      </header>
+      <main id="main"><slot /></main>
+      <footer class="site-footer">
+        <span>{name}</span>
+        {site.repository && <a href={site.repository}>Firmware and source</a>}
+      </footer>
+    </div>
+  </body>
+</html>
