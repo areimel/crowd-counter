@@ -1,0 +1,9 @@
+# Arduino default_8MB.csv without the coredump partition; its 64 KB goes to the
+# night-log filesystem. Crash dumps are deliberately not kept: a dumped radio
+# task stack could contain a device address that was being hashed.
+# Name,   Type, SubType, Offset,   Size
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x330000,
+app1,     app,  ota_1,   0x340000, 0x330000,
+spiffs,   data, spiffs,  0x670000, 0x190000,
