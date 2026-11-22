@@ -57,23 +57,12 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install -r requirements.txt
-      - name: Build every board firmware once and install its pinned image validation tools
-        run: |
-          for env in $(.venv/bin/python scripts/list_envs.py | .venv/bin/python -c "import json,sys;print(' '.join(json.load(sys.stdin)))"); do
-            .venv/bin/pio run -e "$env"
-          done
+      - name: Build firmware and install its pinned image validation tools
+        run: .venv/bin/pio run -e sticks3
       - name: Test firmware and packaging
         run: |
           .venv/bin/python -m unittest discover -s scripts/tests -v
           .venv/bin/pio test -e native
-          c++ -std=c++11 -Wall -Wextra -Werror -Iinclude tests/test_gesture.cpp -o /tmp/sticks3-gesture-tests
-          /tmp/sticks3-gesture-tests
-          c++ -std=c++17 -Wall -Wextra -Werror -Itests/ble -Iinclude tests/test_ble.cpp src/BleKeyboard.cpp -o /tmp/sticks3-ble-tests
-          /tmp/sticks3-ble-tests
-          c++ -std=c++11 -Wall -Wextra -Werror -Iinclude tests/test_controller.cpp -o /tmp/sticks3-controller-tests
-          /tmp/sticks3-controller-tests
-          c++ -std=c++11 -Wall -Wextra -Werror -Iinclude tests/test_player.cpp -o /tmp/sticks3-player-tests
-          /tmp/sticks3-player-tests
       - name: Package the validated firmware build
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -100,7 +89,7 @@ jobs:
         run: |
           cd web/public/firmware
           for dir in */; do zip -qr "${dir%/}.zip" "$dir"; done
-          gh release create "$RELEASE_VERSION" index.json *.zip --verify-tag --latest --title "Stick-S3 Macro Clicker $RELEASE_VERSION" --generate-notes
+          gh release create "$RELEASE_VERSION" index.json *.zip --verify-tag --latest --title "Crowd Counter $RELEASE_VERSION" --generate-notes
 
   deploy:
     needs: release

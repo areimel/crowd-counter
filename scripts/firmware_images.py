@@ -8,21 +8,16 @@ import sys
 SECTOR = 0x1000
 PARTITIONS_OFFSET = 0x8000
 BOOT_APP0_SIZE = 0x2000
-# Bootloader offset by chip: classic ESP32 is the exception, all others use 0x0.
-BOOTLOADER_OFFSETS = {"ESP32": 0x1000}
-# One table maps a board's `chip` to the vendored esptool image class name.
-IMAGE_CLASSES = {"ESP32": "ESP32FirmwareImage", "ESP32-S3": "ESP32S3FirmwareImage",
-                 "ESP32-C3": "ESP32C3FirmwareImage"}
+# The only supported target is the ESP32-S3: its bootloader lives at 0x0.
+CHIP = "ESP32-S3"
+BOOTLOADER_OFFSET = 0x0
+IMAGE_CLASS = "ESP32S3FirmwareImage"
 
 
-def bootloader_offset(chip):
-    return BOOTLOADER_OFFSETS.get(chip, 0)
-
-
-def image_parser(core, chip):
-    """Return the esptool image class for `chip` from PlatformIO's vendored esptool."""
-    if chip not in IMAGE_CLASSES:
-        raise ValueError(f"Unsupported chip {chip!r}; known: {sorted(IMAGE_CLASSES)}")
+def image_parser(core, chip=CHIP):
+    """Return the esptool ESP32-S3 image class from PlatformIO's vendored esptool."""
+    if chip != CHIP:
+        raise ValueError(f"Unsupported chip {chip!r}; only {CHIP} is supported")
     tool = Path(core) / "packages/tool-esptoolpy"
     if not (tool / "esptool/bin_image.py").is_file():
         raise ValueError("PlatformIO esptool is missing; build firmware first")
@@ -37,7 +32,7 @@ def image_parser(core, chip):
             sys.path.append(str(extra))
     try:
         from esptool import bin_image
-        return getattr(bin_image, IMAGE_CLASSES[chip])
+        return getattr(bin_image, IMAGE_CLASS)
     except (ImportError, AttributeError) as exc:
         raise ValueError(
             f"Cannot load PlatformIO esptool ({exc!r}); looked for dependencies in "
@@ -82,6 +77,8 @@ def parse_partitions(data):
 
 def flash_layout(table):
     """Return (nvs, otadata offset, first app offset, first app size) from a partition table."""
+    if any(k == 1 and st == 3 for k, st, _, _ in table.values()):
+        raise ValueError("coredump partition present; crash dumps could hold a device address")
     nvs = next(((o, s) for k, st, o, s in table.values() if k == 1 and st == 2), None)
     otadata = next((o for k, st, o, s in table.values() if k == 1 and st == 0), None)
     app = next(((o, s) for k, st, o, s in table.values() if k == 0), None)
