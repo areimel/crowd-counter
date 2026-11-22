@@ -68,7 +68,6 @@ main {
   color: var(--dim);
 }
 
-.board-grid,
 .feature-grid {
   display: grid;
   gap: var(--space-4);
@@ -94,9 +93,6 @@ main {
   }
 }
 
-main > [data-install-for] {
-  margin-top: var(--space-4);
-}
 .section > .btn {
   justify-self: start;
 }

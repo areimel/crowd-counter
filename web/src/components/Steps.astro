@@ -2,12 +2,14 @@
 /* Classes: section, section-title, steps */
 interface Props {
   steps: string[];
+  title?: string;
+  id?: string;
 }
-const { steps } = Astro.props;
+const { steps, title = "How to install", id = "steps" } = Astro.props;
 ---
 
-<section class="section" id="steps">
-  <h2 class="section-title">How to install</h2>
+<section class="section" id={id}>
+  <h2 class="section-title">{title}</h2>
   <ol class="steps">
     {steps.map((step) => <li>{step}</li>)}
   </ol>

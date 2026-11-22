@@ -12,16 +12,12 @@ export interface Board {
   id: string;
   label: string;
   chip: string;
-  buttons: number;
-  display: boolean;
-  battery: boolean;
-  features: string[];
   manifest: string;
   parts: FirmwarePart[];
 }
 
 export interface FirmwareIndex {
-  schemaVersion: 2;
+  schemaVersion: 3;
   version: string;
   commit: string;
   configSha256: string;
@@ -54,7 +50,7 @@ function safeRelPath(v: unknown): v is string {
 export function validateIndex(value: unknown): FirmwareIndex {
   const v = value as Partial<FirmwareIndex> | null;
   if (!v || typeof v !== "object") fail("not an object");
-  if (v.schemaVersion !== 2) fail("unsupported schemaVersion");
+  if (v.schemaVersion !== 3) fail("unsupported schemaVersion");
   if (!isStr(v.version)) fail("missing version");
   if (!COMMIT.test(String(v.commit))) fail("commit must be 40 lowercase hex");
   if (!HASH.test(String(v.configSha256))) fail("bad configSha256");
@@ -66,8 +62,6 @@ export function validateIndex(value: unknown): FirmwareIndex {
   for (const b of v.boards) {
     if (!b || !isStr(b.id) || !isStr(b.label) || !isStr(b.chip))
       fail("board needs string id, label and chip");
-    if (!Number.isInteger(b.buttons) || b.buttons < 0)
-      fail(`board ${b.id} buttons must be an integer >= 0`);
     if (!safeRelPath(b.manifest)) fail(`board ${b.id} has an unsafe manifest path`);
     if (!Array.isArray(b.parts) || b.parts.length === 0)
       fail(`board ${b.id} has no parts`);
@@ -103,15 +97,4 @@ export function readIndex(
     return null;
   }
   return validateIndex(JSON.parse(text));
-}
-
-/** "ESP32-S3 · 2 buttons · display · battery" */
-export function boardSummary(board: Board): string {
-  const parts = [
-    board.chip,
-    `${board.buttons} ${board.buttons === 1 ? "button" : "buttons"}`,
-  ];
-  if (board.display) parts.push("display");
-  if (board.battery) parts.push("battery");
-  return parts.join(" · ");
 }

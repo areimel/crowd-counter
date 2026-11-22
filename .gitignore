@@ -1,7 +1,5 @@
 # PlatformIO build outputs and downloaded dependencies
 .pio/
-.pioenvs/
-.piolibdeps/
 
 # Local Python environments and caches
 .venv/
@@ -35,9 +33,5 @@ web/public/firmware/
 web/test-results/
 web/playwright-report/
 
-# Local secrets and overrides (never commit)
-secrets.yaml
+# Local overrides (never commit)
 platformio_override.ini
-
-# Scratch/demo media
-brag-output/

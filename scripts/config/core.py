@@ -1,5 +1,4 @@
 """Shared building blocks: YAML loading, validation helpers, section loading."""
-import importlib.util
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,8 +10,6 @@ except ImportError as exc:
         "Missing PyYAML. Run: python -m pip install -r requirements.txt "
         "using the Python environment that runs PlatformIO."
     ) from exc
-
-SECRET_KEYS = ("ota_password", "wifi_ssid", "wifi_password")
 
 
 class ConfigError(ValueError):
@@ -27,9 +24,7 @@ class ConfigError(ValueError):
 class Context:
     board_id: str
     board: dict
-    secrets: dict = field(default_factory=dict)
     warnings: list = field(default_factory=list)
-    features: dict = field(default_factory=dict)  # final FEATURE_* flags, set by render
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -76,6 +71,13 @@ def integer(value, low, high, path):
     return value
 
 
+def number(value, low, high, path):
+    """An int or float (not bool) within [low, high]."""
+    if type(value) not in (int, float) or not low <= value <= high:
+        raise ConfigError(path, f"must be a number between {low} and {high}")
+    return value
+
+
 def boolean(value, path):
     if type(value) is not bool:
         raise ConfigError(path, "must be true or false")
@@ -91,6 +93,11 @@ def cstr(text):
     return json.dumps(text, ensure_ascii=False).replace("?", "\\?")
 
 
+def cfloat(x):
+    """A valid C++ float literal, e.g. 1.45f, 1.0f."""
+    return f"{float(x)!r}f"
+
+
 def write_if_changed(path, text):
     """Write only when content differs, so unchanged builds keep their mtime."""
     path = Path(path)
@@ -101,37 +108,8 @@ def write_if_changed(path, text):
     return True
 
 
-def load_secrets(path):
-    """Read the optional gitignored secrets file; unknown keys are an error."""
-    path = Path(path)
-    if not path.exists():
-        return {}
-    secrets = load_yaml(path) or {}
-    fields(secrets, [], "secrets.yaml", SECRET_KEYS)
-    for key, value in secrets.items():
-        if not isinstance(value, str):
-            raise ConfigError(f"secrets.yaml.{key}", "must be a string")
-    return secrets
-
-
-def _load_module(path, name):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def load_sections(data, base=Path(".")):
-    """Built-in section modules plus the optional `schema:` module (relative to `base`)."""
+def load_sections():
+    """The built-in section modules."""
     from config import sections
 
-    modules = list(sections.BUILTIN)
-    schema = data.get("schema") if isinstance(data, dict) else None
-    if schema is not None:
-        if not isinstance(schema, str):
-            raise ConfigError("schema", "must be a path to a .py file")
-        path = Path(base) / schema
-        if not path.is_file():
-            raise ConfigError("schema", f"{path} not found")
-        modules.append(_load_module(path, "config_schema"))
-    return modules
+    return list(sections.BUILTIN)

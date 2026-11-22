@@ -1,5 +1,5 @@
 """Built-in config sections. Each module exposes KEY, REQUIRED, DEFAULT, INCLUDES,
-validate(value, ctx) and emit(cfg, ctx); it may add features(cfg, ctx) -> {flag: bool}."""
-from . import project, ble, wifi, ota, display, gestures, buttons
+validate(value, ctx) and emit(cfg, ctx)."""
+from . import project, display, gestures, counter
 
-BUILTIN = [project, ble, wifi, ota, display, gestures, buttons]
+BUILTIN = [project, display, gestures, counter]

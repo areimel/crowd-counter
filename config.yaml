@@ -1,58 +1,76 @@
-# ESP32 Starter configuration. Edit this file, then rebuild.
-# Invalid entries fail the build with the path of the problem.
+# Crowd Counter configuration. Edit this file, then rebuild.
+# Invalid entries fail the build with the key path of the problem.
 #
-# WARNING: this file is embedded in the firmware and published with releases.
-# Never put passwords, tokens or other secrets here. OTA and dev WiFi
-# credentials go in the gitignored secrets.yaml (see secrets.example.yaml).
+# WARNING: this file is embedded in the firmware and published with releases
+# (the web flasher index). Never put passwords, tokens or other secrets here.
 #
-# Sections:
-#   project   name (1-32 chars), tagline and description for the UI and web installer
-#   ble       Bluetooth LE HID keyboard: enabled, name (1-29 UTF-8 bytes), keystroke_ms (5-100)
-#   wifi      enabled, hostname (RFC 1123 label, 1-32); provision via Improv Serial
-#   ota       enabled; needs wifi.enabled: true and ota_password in secrets.yaml,
-#             otherwise it is left out of the build with a warning
-#   display   enabled, brightness (1-255); ignored on boards without a display
-#   gestures  debounce_ms < double_click_ms < long_press_ms
-#   buttons   list, one entry per physical button (extras are dropped with a warning);
-#             each has single / double / long actions: null or a key combo such as
-#             "CMD+SHIFT+4" or { keys: "CTRL+C", label: COPY } (label 1-10 ASCII chars)
-#   schema    optional path to a .py module that adds project-specific sections
+# Every key below is required in `counter`; this file is the single source of
+# these values. Sections:
 #
-# Modifiers: CTRL, SHIFT, ALT (OPT), CMD (GUI, WIN, META, SUPER).
-# Keys: A-Z 0-9 F1-F24 ENTER ESC BACKSPACE TAB SPACE DELETE INSERT HOME END
-#   PAGE_UP PAGE_DOWN UP DOWN LEFT RIGHT CAPS_LOCK PRINT_SCREEN MINUS EQUAL
-#   LBRACKET RBRACKET BACKSLASH SEMICOLON QUOTE GRAVE COMMA PERIOD SLASH
+#   project   name (1-32 printable ASCII), tagline (<=120) and description (<=500)
+#             for the UI and the web flasher
+#   display   (optional) brightness 1-255 while active; dim_brightness 1-255, must
+#             be lower than brightness, used when idle; dim_after_s 5-600 idle
+#             seconds before dimming
+#   gestures  (optional) debounce_ms (1-100) < double_click_ms (50-1000)
+#             < long_press_ms (100-10000)
+#   counter   the estimator:
+#     window_s              60-900   sliding window for counting unique devices
+#     rssi_gate_dbm         -95..-50 default signal gate; adjustable on the device
+#     recompute_s           1-30     how often the estimate is recomputed
+#     smoothing_s           recompute_s..300, a multiple of recompute_s; the moving
+#                           average shown on screen
+#     peak_hold_min         1-30     a peak must hold this long to be recorded
+#     alert_hold_s          0-300    the smoothed estimate must stay >= the threshold
+#                           X this long before the flash/chime, once per night
+#     table_capacity        500-6000 device table slots in PSRAM; oldest evicted
+#     background_after_min  10-600   fixed-address non-phone BLE devices present this
+#                           long are treated as venue infrastructure and ignored
+#     blend_ble_pct         0-100    BLE share of the estimate when the Wi-Fi ratio
+#                           is fitted
+#     threshold             X on the device: default, step (1-50), max (step..9999);
+#                           default is a multiple of step, step <= default <= max
+#     class_weights_pct     0-100 each, all seven required: how much each coarse
+#                           device class counts (phone, wearable, audio, tracker,
+#                           computer, beacon, other)
+#     radio                 time-slice lengths (set from bench measurements):
+#                           ble_slice_ms and wifi_dwell_ms (200-10000 each), and
+#                           channels, 1-3 distinct Wi-Fi channels from 1-13
+#     venues                1-8 venue types: name (1-14 printable ASCII, unique),
+#                           ratio_ble and ratio_wifi (0.3-5.0) are starting
+#                           devices-per-person ratios, replaced by calibration
+#     alert                 flash (true/false), chime (true/false), volume 0-160
+#                           (capped to avoid brownout)
 
 project:
-  name: ESP32 Starter
-  tagline: A starting point for ESP32 firmware projects
-  description: BLE HID, WiFi provisioning, OTA and a status display on several boards.
-
-ble:
-  enabled: true
-  name: ESP32 Starter
-  keystroke_ms: 15 # time each key is held, and the gap after it
-
-wifi:
-  enabled: true
-  hostname: esp32-starter
-
-ota:
-  enabled: true
+  name: Crowd Counter
+  tagline: A pocket attendance estimate for the settle-up
+  description: Estimates how many people are in the room by passively counting nearby phones and wearables. An estimate, not a certified count.
 
 display:
-  enabled: true
-  brightness: 64
+  brightness: 96
+  dim_brightness: 12
+  dim_after_s: 30
 
 gestures:
   debounce_ms: 25
   double_click_ms: 250
   long_press_ms: 650
 
-buttons:
-  - single: { keys: "CTRL+C", label: COPY }
-    double: { keys: "CTRL+V", label: PASTE }
-    long: { keys: "CTRL+X", label: CUT }
-  - single: { keys: ESC, label: ESCAPE }
-    double: null
-    long: { keys: "CTRL+Z", label: UNDO }
+counter:
+  window_s: 300
+  rssi_gate_dbm: -85
+  recompute_s: 5
+  smoothing_s: 60
+  peak_hold_min: 10
+  alert_hold_s: 30
+  table_capacity: 5000
+  background_after_min: 90
+  blend_ble_pct: 80
+  threshold: { default: 120, step: 10, max: 990 }
+  class_weights_pct: { phone: 100, wearable: 25, audio: 25, tracker: 0, computer: 25, beacon: 0, other: 50 }
+  radio: { ble_slice_ms: 2000, wifi_dwell_ms: 1000, channels: [1, 6, 11] }
+  venues:
+    - { name: "BAR / PUB", ratio_ble: 1.45, ratio_wifi: 1.0 }
+    - { name: "PRIVATE EVENT", ratio_ble: 1.30, ratio_wifi: 1.0 }
+  alert: { flash: true, chime: true, volume: 96 }

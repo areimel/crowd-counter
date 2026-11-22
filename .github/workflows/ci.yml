@@ -21,27 +21,18 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Receive-only guard (no transmit or connect APIs in src/ or lib/)
+        run: python scripts/check_receive_only.py
       - name: Install firmware tools
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install -r requirements.txt
-      - name: Build every board firmware and install its pinned image validation tools
-        run: |
-          for env in $(.venv/bin/python scripts/list_envs.py | .venv/bin/python -c "import json,sys;print(' '.join(json.load(sys.stdin)))"); do
-            .venv/bin/pio run -e "$env"
-          done
-      - name: Test configuration, packaging, gestures, and BLE
+      - name: Build firmware and install its pinned image validation tools
+        run: .venv/bin/pio run -e sticks3
+      - name: Test configuration, packaging and firmware logic
         run: |
           .venv/bin/python -m unittest discover -s scripts/tests -v
           .venv/bin/pio test -e native
-          c++ -std=c++11 -Wall -Wextra -Werror -Iinclude tests/test_gesture.cpp -o /tmp/sticks3-gesture-tests
-          /tmp/sticks3-gesture-tests
-          c++ -std=c++17 -Wall -Wextra -Werror -Itests/ble -Iinclude tests/test_ble.cpp src/BleKeyboard.cpp -o /tmp/sticks3-ble-tests
-          /tmp/sticks3-ble-tests
-          c++ -std=c++11 -Wall -Wextra -Werror -Iinclude tests/test_controller.cpp -o /tmp/sticks3-controller-tests
-          /tmp/sticks3-controller-tests
-          c++ -std=c++11 -Wall -Wextra -Werror -Iinclude tests/test_player.cpp -o /tmp/sticks3-player-tests
-          /tmp/sticks3-player-tests
       - name: Package firmware
         run: |
           .venv/bin/python scripts/package_firmware.py --version 0.0.0-dev --output web/public/firmware

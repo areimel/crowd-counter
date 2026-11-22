@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { boardSummary, readIndex, validateIndex, withBase } from "../src/lib/project";
+import { readIndex, validateIndex, withBase } from "../src/lib/project";
 
 const fixtures = resolve(import.meta.dirname, "fixtures");
 const fixtureJson = () => JSON.parse(readFileSync(join(fixtures, "index.json"), "utf8"));
@@ -14,23 +14,14 @@ test("readIndex returns null for a missing directory", () => {
   assert.equal(readIndex(join(tmpdir(), "no-such-firmware-dir")), null);
 });
 
-test("readIndex returns boards in file order", () => {
+test("readIndex returns the board", () => {
   const index = readIndex(fixtures);
   assert.ok(index);
   assert.deepEqual(
     index.boards.map((b) => b.id),
-    ["sticks3", "esp32"],
+    ["sticks3"],
   );
-  assert.equal(index.project.name, "Fixture Starter");
-});
-
-test("boardSummary describes board capabilities", () => {
-  const index = readIndex(fixtures)!;
-  assert.equal(
-    boardSummary(index.boards[0]),
-    "ESP32-S3 · 2 buttons · display · battery",
-  );
-  assert.equal(boardSummary(index.boards[1]), "ESP32 · 1 button");
+  assert.equal(index.project.name, "Fixture Counter");
 });
 
 test("withBase normalizes slashes for any base", () => {
@@ -50,8 +41,7 @@ test("validateIndex rejects malformed indexes", () => {
     ["non-string description", (i) => (i.project.description = 5)],
     ["missing label", (i) => delete i.boards[0].label],
     ["missing chip", (i) => delete i.boards[0].chip],
-    ["negative buttons", (i) => (i.boards[0].buttons = -1)],
-    ["fractional buttons", (i) => (i.boards[0].buttons = 1.5)],
+    ["schemaVersion 2", (i) => (i.schemaVersion = 2)],
     ["traversal part", (i) => (i.boards[0].parts[0].path = "../x.bin")],
     ["absolute part", (i) => (i.boards[0].parts[0].path = "/x.bin")],
     ["backslash part", (i) => (i.boards[0].parts[0].path = "a\\b.bin")],
