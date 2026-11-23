@@ -35,3 +35,10 @@ web/playwright-report/
 
 # Local overrides (never commit)
 platformio_override.ini
+
+# Launch-video intermediates (frames, scripts, local tool installs)
+brag-output*/work/
+
+# Stray pnpm files (the web app uses npm ci)
+web/pnpm-lock.yaml
+web/pnpm-workspace.yaml

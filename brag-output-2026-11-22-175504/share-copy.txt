@@ -1,0 +1,3 @@
+I built Crowd Counter, a pocket device that estimates how many people are in a room and turns green when the crowd hits a target, so a band can prove its attendance bonus, a venue can see its peak, and an organizer can check turnout against a goal.
+It counts nearby devices without identifying anyone, and it is upfront that the number is an estimate, not a certified count.
+I'm open to software engineering roles and happy to talk about it.
