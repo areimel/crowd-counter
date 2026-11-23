@@ -55,6 +55,9 @@ Owner key: lead = session lead, A/B/C/D = team (Opus lead, Sonnet/Haiku workers)
   - [ ] Stack high-water marks for the NimBLE host, Wi-Fi and radio tasks; queue drops in a busy room
   - [ ] Re-check in the disassembly that the hash working buffers are wiped
 
+## Launch video (lead)
+- [x] Square LinkedIn cut with contact card (`brag-output-2026-11-22-175504/`); intermediates in `work/` are gitignored
+
 ## Decisions waiting on Alec
 - [ ] Flash encryption / disabling USB-JTAG (hard to undo): while powered, salt and ids are in RAM
       together, so physical debug access to a running device could recover addresses.
