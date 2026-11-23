@@ -1,0 +1,1 @@
+A cover band gets a bonus when 120 people show up, so I built them a pocket StickS3 that counts the phones it can hear and turns green when the crowd clears the line. Receive only, addresses hashed on receipt, logs hold counts only — and it says "est." because it's an estimate, not a certified count.
